@@ -18,16 +18,16 @@
 //Estructura de carpetas del FS (Se persiste)
 struct t_dir
 {
-	int codigo;
+	int id_dir;
 	char *nombre;
-	int padre;
+	int id_padre;
 };
 
 //no se persisten: estado, aceptado
 //ya que cuando se cae el FS deben volver a conectar
 struct t_nodo {
 	//numero unico de identificacion de cada nodo
-	int nro_nodo;
+	int id_nodo;
 
 	//desconectado = 0
 	int estado;
@@ -46,7 +46,7 @@ struct t_nodo {
 
 struct t_copia_bloq {
 	//numero de nodo en el que esta la copia
-	int nro_nodo;
+	int id_nodo;
 
 	//bloque del nodo en donde esta la copia
 	int bloq_nodo;
@@ -64,13 +64,13 @@ struct t_bloque {
 struct t_archivo
 {
 	//codigo unico del archivo fragmentado
-	int codigo;
+	int id_archivo;
 
 	//nombre del archivo dentro del MDFS
 	char *nombre;
 
 	//directorio padre del archivo dentro del MDFS
-	int dir_padre;
+	int id_dir_padre;
 
 	//cantidad de bloques en las cuales se fragmento el archivo
 	int cant_bloq;
@@ -91,7 +91,7 @@ t_list* listaArchivos;
 
 int estaActivoNodo(int nro_nodo) {
 	int _nodoConNumeroBuscadoActivo(struct t_nodo nodo) {
-		return (nro_nodo == nodo.nro_nodo) && (nodo.estado);
+		return (nro_nodo == nodo.id_nodo) && (nodo.estado);
 	}
 
 	return list_any_satisfy(listaNodos, (void*) _nodoConNumeroBuscadoActivo);
@@ -101,7 +101,7 @@ int estaActivoNodo(int nro_nodo) {
 int bloqueActivo(struct t_bloque bloque) {
 	int i;
 
-	for (i = 0; (i < 3) && (!estaActivoNodo(bloque.copia[i].nro_nodo)); i++)
+	for (i = 0; (i < 3) && (!estaActivoNodo(bloque.copia[i].id_nodo)); i++)
 		;
 
 	return i < 3;
@@ -126,6 +126,10 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //int atenderSolicitudesDeMarta();
 
 int main(void) {
-	puts("!!!Hello World!!!"); /* prints !!!Hello World!!! */
 	return EXIT_SUCCESS;
 }
+
+
+
+
+

@@ -15,6 +15,10 @@
 #include <commons/bitarray.h>
 #include <string.h>
 
+enum t_estado_nodo {
+	DESCONECTADO,CONECTADO,PENDIENTE
+};
+
 //Estructura de carpetas del FS (Se persiste)
 struct t_dir
 {
@@ -29,11 +33,8 @@ struct t_nodo {
 	//numero unico de identificacion de cada nodo
 	int nro_nodo;
 
-	//desconectado = 0
-	int estado;
-
-	//aceptado = 1  pendiente = 0
-	int aceptado;
+	//DESCONECTADO, CONECTADO, PENDIENTE (de aceptacion)
+	enum t_estado_nodo estado;
 
 	//cantidad de bloques que se pueden almacenar en el nodo
 	int cantidad_bloques;

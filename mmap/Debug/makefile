@@ -35,7 +35,7 @@ mmap: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) mmap
+	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) mmap
 	-@echo ' '
 
 .PHONY: all clean dependents

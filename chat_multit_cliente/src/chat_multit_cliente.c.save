@@ -7,7 +7,6 @@
  Description : Hello World in C, Ansi-style
  ============================================================================
  */
-
 //Includes
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +23,7 @@
 //Defines
 #define MAX_MSG 100	//maximo largo de un mensaje
 #define DEST_PORT 3490 //puerto de destino
-#define DEST_IP "192.168.0.50" //Ip de destino
+#define DEST_IP "1" //Ip de destino
 
 int socketfd_srv;	//file descriptor del Socket
 int finalizar_chat = 0;

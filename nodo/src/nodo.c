@@ -19,17 +19,19 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico
+
 
 // Estructuras
    // La estructura que envia el nodo al FS al iniciarse
-struct nodo_to_send {
+struct info_nodo {
 	int nodo_nuevo;
 	int cant_bloques;
 	char* saludo; // TODO eliminar esta linea
 };
 
    // Una estructura que contiene todos los datos del arch de conf
-struct info_nodo {
+struct conf_nodo {
 	char* ip_fs;
 	int puerto_fs;
 	char* archivo_bin;
@@ -40,26 +42,31 @@ struct info_nodo {
 	int cant_bloques;
 };
 
+	//Enum del protocolo
+enum protocolo {INFO_NODO};
+
 //Variables Globales
-struct info_nodo *conf; // estructura que contiene la info del arch de conf
+struct conf_nodo *conf; // estructura que contiene la info del arch de conf
 int socketfd_fs; // file descriptor del FS
 
 
 //Prototipos
 void levantar_arch_conf(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
 void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info del nodo
-void setNodoToSend(struct nodo_to_send *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
-void solicitarConexionConFS(struct sockaddr_in*, struct nodo_to_send*); //conecta con el FS
+void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
+void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
+int enviar_info_nodo (int, struct info_nodo*);
+int enviar_bajo_protocolo(int , void*);
 
 //Main
 int main(void) {
-	struct nodo_to_send *info_envio;
+	struct info_nodo info_envio;
 	levantar_arch_conf();
-	setNodoToSend(info_envio);
+	setNodoToSend(&info_envio);
 
-	struct sockaddr_in *socketaddr_fs;
-	setSocketAddr(socketaddr_fs);
-	solicitarConexionConFS(socketaddr_fs,info_envio);
+	struct sockaddr_in socketaddr_fs;
+	setSocketAddr(&socketaddr_fs);
+	solicitarConexionConFS(&socketaddr_fs,&info_envio);
 
 	return EXIT_SUCCESS;
 }
@@ -101,14 +108,14 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 }
 
 //---------------------------------------------------------------------------
-void setNodoToSend(struct nodo_to_send *info_envio){
+void setNodoToSend(struct info_nodo *info_envio){
 	info_envio->nodo_nuevo = conf->nodo_nuevo;
 	info_envio->cant_bloques = conf->cant_bloques;
 	info_envio->saludo = "TODO SE MANDO CORRECTO"; // TODO eliminar esta linea
 }
 
 //---------------------------------------------------------------------------
-void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct nodo_to_send *info_envio) {
+void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct info_nodo *info_envio) {
 
 	if ((socketfd_fs = socket(AF_INET, SOCK_STREAM, 0)) == -1) { // crea un Socket
 		perror("Error while socket()");
@@ -121,10 +128,53 @@ void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct nodo_to
 		exit(-1);
 	}
 
-	if (send(socketfd_fs, info_envio, sizeof(struct nodo_to_send), 0) == -1) { // envia la estructura al FS
+	if (enviar_info_nodo(socketfd_fs, info_envio) == -1) { // envia la estructura al FS
 		printf("Error while send()\n");
 	}
 
+}
+
+//---------------------------------------------------------------------------
+int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
+
+	int result, error;
+	uint32_t prot = INFO_NODO;
+
+	if ((result = send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
+		error = -1;
+	}
+
+	if ((result = enviar_bajo_protocolo(socket, info_nodo->cant_bloques)) == -1) { //envia el primer campo
+		error = -1;
+	}
+
+	if ((result = enviar_bajo_protocolo(socket, info_nodo->nodo_nuevo)) == -1) { //envia el segundo campo
+		error = -1;
+	}
+
+	if (error){
+		return error;
+	} else {
+		return result;
+	}
+}
+
+//---------------------------------------------------------------------------
+int enviar_bajo_protocolo(int socket, void *buffer) {
+	int result, error=0;
+	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
+	size_buffer = sizeof(*buffer);
+	if ((result = send(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+		error = -1;
+	}
+	if ((result = send(socket, buffer, size_buffer, 0)) == -1) {
+		error = -1;
+	}
+	if (error){
+		return error;
+	} else {
+		return result;
+	}
 }
 
 //---------------------------------------------------------------------------

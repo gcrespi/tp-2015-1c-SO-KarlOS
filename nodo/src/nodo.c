@@ -60,12 +60,14 @@ int enviar(int , void*);
 
 //Main
 int main(void) {
-	struct info_nodo info_envio;
 	levantar_arch_conf();
+
+	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
 	struct sockaddr_in socketaddr_fs;
 	setSocketAddr(&socketaddr_fs);
+
 	solicitarConexionConFS(&socketaddr_fs,&info_envio);
 
 	return EXIT_SUCCESS;

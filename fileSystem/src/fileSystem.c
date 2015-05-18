@@ -13,6 +13,7 @@
 #include <commons/collections/list.h>
 #include <commons/string.h>
 #include <commons/bitarray.h>
+#include <commons/config.h>
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
@@ -22,6 +23,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+
+
+
 
 enum t_estado_nodo {
 	DESCONECTADO,CONECTADO,PENDIENTE
@@ -88,6 +92,12 @@ struct t_archivo
 	t_list* bloques;
 };
 
+// La estructura que contiene todos los datos del arch de conf
+struct conf_fs {
+	int puerto_listen;
+	int min_cant_nodos;
+};
+
 // La estructura que envia el nodo al FS al iniciarse
 struct info_nodo {
 	int nodo_nuevo;
@@ -145,12 +155,44 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //int atenderSolicitudesDeMarta();
 
 //Prototipos
+void levantar_arch_conf();
 int recivir_info_nodo (int, struct info_nodo*);
 int recivir(int socket, void *buffer);
+void setSocketAddr(struct sockaddr_in*);
 
+//Variables Globales
+struct conf_fs *conf;
 
 int main(void) {
+
+	levantar_arch_conf();
+
+	struct sockaddr_in socketaddr_listener;
+	setSocketAddr(&socketaddr_listener);
+
+	//solicitarConexionConFS(&socketaddr_fs,&info_envio);
+
 	return EXIT_SUCCESS;
+}
+
+//---------------------------------------------------------------------------
+void levantar_arch_conf(){
+	t_config* conf_arch;
+	conf_arch = config_create("nodo.cfg");
+	if (config_has_property(conf_arch,"IP_FS")){
+		conf->puerto_listen = config_get_int_value(conf_arch,"PUERTO_LISTEN");
+	} else printf("Error: el archivo de conf no tiene PUERTO_LISTEN\n");
+	if (config_has_property(conf_arch,"IP_FS")){
+		conf->min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
+	} else printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
+}
+
+//---------------------------------------------------------------------------
+void setSocketAddr(struct sockaddr_in* direccionDestino) {
+	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
+	direccionDestino->sin_port = htons(conf->puerto_listen); // setea Puerto a conectarme
+	direccionDestino->sin_addr.s_addr = inet_addr(INADDR_ANY); // Setea a la Ip local
+	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 //---------------------------------------------------------------------------

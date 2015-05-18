@@ -159,16 +159,20 @@ void levantar_arch_conf();
 int recivir_info_nodo (int, struct info_nodo*);
 int recivir(int socket, void *buffer);
 void setSocketAddr(struct sockaddr_in*);
+char* local_ip();
 
 //Variables Globales
 struct conf_fs *conf;
 
 int main(void) {
-
+/*
 	levantar_arch_conf();
 
 	struct sockaddr_in socketaddr_listener;
 	setSocketAddr(&socketaddr_listener);
+*/
+
+	printf("%s",local_ip());
 
 	//solicitarConexionConFS(&socketaddr_fs,&info_envio);
 
@@ -185,6 +189,21 @@ void levantar_arch_conf(){
 	if (config_has_property(conf_arch,"IP_FS")){
 		conf->min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
 	} else printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
+}
+
+//---------------------------------------------------------------------------
+char* local_ip(){
+	char hostname[255];
+	gethostname(hostname, sizeof(hostname));
+	struct hostent* hostinfo;
+	if ((hostinfo=gethostbyname(hostname)) == NULL) { // Obtener información del host
+		herror("Error while gethostbyname()");
+		exit(1);
+	}
+	char* ip = inet_ntoa(*((struct in_addr *)hostinfo->h_addr));
+
+	return ip;
+
 }
 
 //---------------------------------------------------------------------------

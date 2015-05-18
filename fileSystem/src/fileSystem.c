@@ -14,6 +14,14 @@
 #include <commons/string.h>
 #include <commons/bitarray.h>
 #include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 enum t_estado_nodo {
 	DESCONECTADO,CONECTADO,PENDIENTE
@@ -80,6 +88,16 @@ struct t_archivo
 	t_list* bloques;
 };
 
+// La estructura que envia el nodo al FS al iniciarse
+struct info_nodo {
+	int nodo_nuevo;
+	int cant_bloques;
+	char* saludo; // TODO eliminar esta linea
+};
+
+//Enum del protocolo
+enum protocolo {INFO_NODO};
+
 //(lista de t_nodo)
 t_list* listaNodos;
 
@@ -126,11 +144,55 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //
 //int atenderSolicitudesDeMarta();
 
+//Prototipos
+int recivir_info_nodo (int, struct info_nodo*);
+int recivir(int socket, void *buffer);
+
+
 int main(void) {
 	return EXIT_SUCCESS;
 }
 
+//---------------------------------------------------------------------------
+int recvir_bajo_protocolo(int socket, void* something){ //no estoy seguro si esto sirve
+	int result=0;
+	uint32_t prot;
+	if ((result += recv(socket, &prot, sizeof(uint32_t), 0)) == -1) {
+		return -1;
+	}
+	switch(prot){
+		case INFO_NODO: recivir_info_nodo(socket, something); break;
+		default: return -1;
+	}
+	return result;
+}
+//---------------------------------------------------------------------------
+int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 
+	int result=0;
 
+	if ((result += recivir(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
+		return -1;
+	}
+
+	if ((result += recivir(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
+		return -1;
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int recivir(int socket, void *buffer) {
+	int result=0;
+	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
+	if ((result += recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+		return -1;
+	}
+	if ((result += recv(socket, buffer, size_buffer, 0)) == -1) {
+		return -1;
+	}
+	return result;
+}
 
 

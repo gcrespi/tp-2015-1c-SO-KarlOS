@@ -56,7 +56,7 @@ void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info de
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
-int enviar_bajo_protocolo(int , void*);
+int enviar(int , void*);
 
 //Main
 int main(void) {
@@ -137,44 +137,36 @@ void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct info_no
 //---------------------------------------------------------------------------
 int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 
-	int result, error;
+	int result=0;
 	uint32_t prot = INFO_NODO;
 
-	if ((result = send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
-		error = -1;
+	if ((result += send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
+		return -1;
 	}
 
-	if ((result = enviar_bajo_protocolo(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
-		error = -1;
+	if ((result += enviar(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
+		return -1;
 	}
 
-	if ((result = enviar_bajo_protocolo(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		error = -1;
+	if ((result += enviar(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
+		return -1;
 	}
 
-	if (error){
-		return error;
-	} else {
-		return result;
-	}
+	return result;
 }
 
 //---------------------------------------------------------------------------
-int enviar_bajo_protocolo(int socket, void *buffer) {
-	int result, error=0;
+int enviar(int socket, void *buffer) {
+	int result=0;
 	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
 	size_buffer = sizeof(*buffer);
-	if ((result = send(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
-		error = -1;
+	if ((result += send(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+		return -1;
 	}
-	if ((result = send(socket, buffer, size_buffer, 0)) == -1) {
-		error = -1;
+	if ((result += send(socket, buffer, size_buffer, 0)) == -1) {
+		return -1;
 	}
-	if (error){
-		return error;
-	} else {
-		return result;
-	}
+	return result;
 }
 
 //---------------------------------------------------------------------------

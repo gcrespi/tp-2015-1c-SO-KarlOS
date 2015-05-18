@@ -144,11 +144,11 @@ int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 		error = -1;
 	}
 
-	if ((result = enviar_bajo_protocolo(socket, info_nodo->cant_bloques)) == -1) { //envia el primer campo
+	if ((result = enviar_bajo_protocolo(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
 		error = -1;
 	}
 
-	if ((result = enviar_bajo_protocolo(socket, info_nodo->nodo_nuevo)) == -1) { //envia el segundo campo
+	if ((result = enviar_bajo_protocolo(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
 		error = -1;
 	}
 

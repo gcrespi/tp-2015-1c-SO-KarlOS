@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <ifaddrs.h>
 
 
 
@@ -102,7 +103,6 @@ struct conf_fs {
 struct info_nodo {
 	int nodo_nuevo;
 	int cant_bloques;
-	char* saludo; // TODO eliminar esta linea
 };
 
 //Enum del protocolo
@@ -157,24 +157,25 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //Prototipos
 void levantar_arch_conf();
 int recivir_info_nodo (int, struct info_nodo*);
+int recivir_bajo_protocolo(int);
 int recivir(int socket, void *buffer);
 void setSocketAddr(struct sockaddr_in*);
-char* local_ip();
+char* get_IP();
 
 //Variables Globales
-struct conf_fs *conf;
+struct conf_fs conf;
 
 int main(void) {
-/*
+
 	levantar_arch_conf();
 
-	struct sockaddr_in socketaddr_listener;
-	setSocketAddr(&socketaddr_listener);
-*/
+	struct sockaddr_in sockaddr_listener, sockaddr_cli;
+	setSocketAddr(&sockaddr_listener);
+	int listener=socket(AF_INET, SOCK_STREAM, 0), socketfd_cli;
+	bind(listener,(struct sockaddr*) &sockaddr_listener,sizeof(sockaddr_listener));
+	socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*)sizeof(sockaddr_cli));
 
-	printf("%s",local_ip());
-
-	//solicitarConexionConFS(&socketaddr_fs,&info_envio);
+	recivir_bajo_protocolo(socketfd_cli);
 
 	return EXIT_SUCCESS;
 }
@@ -182,47 +183,55 @@ int main(void) {
 //---------------------------------------------------------------------------
 void levantar_arch_conf(){
 	t_config* conf_arch;
-	conf_arch = config_create("nodo.cfg");
-	if (config_has_property(conf_arch,"IP_FS")){
-		conf->puerto_listen = config_get_int_value(conf_arch,"PUERTO_LISTEN");
+	conf_arch = config_create("fs.cfg");
+	if (config_has_property(conf_arch,"PUERTO_LISTEN")){
+		conf.puerto_listen = config_get_int_value(conf_arch,"PUERTO_LISTEN");
 	} else printf("Error: el archivo de conf no tiene PUERTO_LISTEN\n");
-	if (config_has_property(conf_arch,"IP_FS")){
-		conf->min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
+	if (config_has_property(conf_arch,"MIN_CANT_NODOS")){
+		conf.min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
 	} else printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
+	config_destroy(conf_arch);
 }
 
 //---------------------------------------------------------------------------
-char* local_ip(){
-	char hostname[255];
-	gethostname(hostname, sizeof(hostname));
-	struct hostent* hostinfo;
-	if ((hostinfo=gethostbyname(hostname)) == NULL) { // Obtener información del host
-		herror("Error while gethostbyname()");
-		exit(1);
-	}
-	char* ip = inet_ntoa(*((struct in_addr *)hostinfo->h_addr));
+char* get_IP(){ //ojala sirva para algo jaja
+	    struct ifaddrs *interface_addr;
+	    struct sockaddr_in* sock_addr;
+	    char* addr;
 
-	return ip;
-
+	    getifaddrs (&interface_addr);
+	    while(interface_addr){
+	        if (interface_addr->ifa_addr->sa_family==AF_INET && strcmp(interface_addr->ifa_name,"eth0")==0 ) {
+	            sock_addr = (struct sockaddr_in*) interface_addr->ifa_addr;
+	        	addr = inet_ntoa(sock_addr->sin_addr);
+	        }
+	        interface_addr = interface_addr->ifa_next;
+	    }
+	    freeifaddrs(interface_addr);
+	    return addr;
 }
-
 //---------------------------------------------------------------------------
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
-	direccionDestino->sin_port = htons(conf->puerto_listen); // setea Puerto a conectarme
+	direccionDestino->sin_port = htons(3214);//conf.puerto_listen); // setea Puerto a conectarme
 	direccionDestino->sin_addr.s_addr = inet_addr(INADDR_ANY); // Setea a la Ip local
 	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 //---------------------------------------------------------------------------
-int recvir_bajo_protocolo(int socket, void* something){ //no estoy seguro si esto sirve
+int recivir_bajo_protocolo(int socket){ //no estoy seguro si esto sirve
 	int result=0;
 	uint32_t prot;
 	if ((result += recv(socket, &prot, sizeof(uint32_t), 0)) == -1) {
 		return -1;
 	}
+			struct info_nodo nodo_env;
 	switch(prot){
-		case INFO_NODO: recivir_info_nodo(socket, something); break;
+		case INFO_NODO:
+			recivir_info_nodo(socket, &nodo_env);
+			printf("Cantidad de bloques: %d",nodo_env.cant_bloques);
+			printf("Nodo nuevo: %d",nodo_env.nodo_nuevo);
+			break;
 		default: return -1;
 	}
 	return result;

@@ -46,7 +46,7 @@ struct conf_nodo {
 enum protocolo {INFO_NODO};
 
 //Variables Globales
-struct conf_nodo *conf; // estructura que contiene la info del arch de conf
+struct conf_nodo conf; // estructura que contiene la info del arch de conf
 int socketfd_fs; // file descriptor del FS
 
 
@@ -78,25 +78,25 @@ void levantar_arch_conf(){
 	t_config* conf_arch;
 	conf_arch = config_create("nodo.cfg");
 	if (config_has_property(conf_arch,"IP_FS")){
-		conf->ip_fs = config_get_string_value(conf_arch,"IP_FS");
+		conf.ip_fs = config_get_string_value(conf_arch,"IP_FS");
 	} else printf("Error: el archivo de conf no tiene IP_FS\n");
 	if (config_has_property(conf_arch,"PUERTO_FS")){
-		conf->puerto_fs = config_get_int_value(conf_arch,"PUERTO_FS");
+		conf.puerto_fs = config_get_int_value(conf_arch,"PUERTO_FS");
 	} else printf("Error: el archivo de conf no tiene PUERTO_FS\n");
 	if (config_has_property(conf_arch,"ARCHIVO_BIN")){
-		conf->archivo_bin = config_get_string_value(conf_arch,"ARCHIVO_BIN");
+		conf.archivo_bin = config_get_string_value(conf_arch,"ARCHIVO_BIN");
 	} else printf("Error: el archivo de conf no tiene ARCHIVO_BIN\n");
 	if (config_has_property(conf_arch,"DIR_TEMP")){
-		conf->dir_temp = config_get_string_value(conf_arch,"DIR_TEMP");
+		conf.dir_temp = config_get_string_value(conf_arch,"DIR_TEMP");
 	} else printf("Error: el archivo de conf no tiene DIR_TEMP\n");
 	if (config_has_property(conf_arch,"IP_NODO")){
-		conf->ip_nodo = config_get_string_value(conf_arch,"IP_NODO");
+		conf.ip_nodo = config_get_string_value(conf_arch,"IP_NODO");
 	} else printf("Error: el archivo de conf no tiene IP_NODO\n");
 	if (config_has_property(conf_arch,"PUERTO_NODO")){
-		conf->puerto_nodo = config_get_int_value(conf_arch,"PUERTO_NODO");
+		conf.puerto_nodo = config_get_int_value(conf_arch,"PUERTO_NODO");
 	} else printf("Error: el archivo de conf no tiene PUERTO_NODO\n");
 	if (config_has_property(conf_arch,"CANT_BLOQUES")){
-		conf->cant_bloques = config_get_int_value(conf_arch,"CANT_BLOQUES");
+		conf.cant_bloques = config_get_int_value(conf_arch,"CANT_BLOQUES");
 	} else printf("Error: el archivo de conf no tiene CANT_BLOQUES\n");
 	config_destroy(conf_arch);
 }
@@ -104,16 +104,15 @@ void levantar_arch_conf(){
 //---------------------------------------------------------------------------
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
-	direccionDestino->sin_port = htons(conf->puerto_fs); // setea Puerto a conectarme
-	direccionDestino->sin_addr.s_addr = inet_addr(conf->ip_fs); // Setea Ip a conectarme
+	direccionDestino->sin_port = htons(conf.puerto_fs); // setea Puerto a conectarme
+	direccionDestino->sin_addr.s_addr = inet_addr(conf.ip_fs); // Setea Ip a conectarme
 	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 //---------------------------------------------------------------------------
 void setNodoToSend(struct info_nodo *info_envio){
-	info_envio->nodo_nuevo = conf->nodo_nuevo;
-	info_envio->cant_bloques = conf->cant_bloques;
-	info_envio->saludo = "TODO SE MANDO CORRECTO"; // TODO eliminar esta linea
+	info_envio->nodo_nuevo = conf.nodo_nuevo;
+	info_envio->cant_bloques = conf.cant_bloques;
 }
 
 //---------------------------------------------------------------------------

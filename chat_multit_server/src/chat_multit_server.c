@@ -22,6 +22,8 @@
 #include <commons/collections/list.h>
 #include <commons/string.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <ctype.h>
 
 //Defines
 #define BACKLOG 5
@@ -34,6 +36,7 @@ int cerrar_servidor=0;
 struct t_cliente {
 	int* sockfd;
 	pthread_t* thr;
+	struct sockaddr_in socketaddr_cli;
 };
 
 //Prototypes
@@ -98,12 +101,80 @@ int aceptar_clientes(int listener,struct sockaddr_in* direccionOrigen)
 }
 
 
-
-void hilo_conex_client(int* socket_cliente)
+//--------------------------------------------------------------------
+int confirmar_aceptacion(int* socket_cliente)
 {
+	printf("Tiene una solicitud de conexion. Aceptar? s/n: ");
+
+	char caracter_valido=0, acepta;
+	do {
+		acepta=getchar();
+
+		if (toupper(acepta)=='N') {
+			if (send(*socket_cliente, "El servidor no ha aceptado tu solicitud.", 40, 0) == -1) { //envia mensaje escrito al servidor
+				printf("Error while send()\n");
+			}
+			close(*socket_cliente);
+			caracter_valido=1;
+		}
+		else if (toupper(acepta)=='S')  {
+			send(*socket_cliente, "El servidor ha aceptado tu solicitud.", 37, 0);
+			caracter_valido=1;
+		}
+		else {
+			printf("Ingrese caracter valido. Acepta? s/n: ");
+		}
+	} while(!caracter_valido);
+
+	return toupper(acepta)=='S';
+}
 
 
+//-------------------------------------------------------------------
+void hilo_conex_client(struct t_cliente *cliente)
+{
+	char msg_recv[MAX_MSG + 1]; //mensaje que voy a recibir
+	int len_msg;				//largo del mensaje
+	int cliente_cerrado = 0;
 
+
+	if(confirmar_aceptacion(cliente->sockfd))
+	{
+		while((!cerrar_servidor)&&(!cliente_cerrado))
+		{
+
+			if ((len_msg = recv(*(cliente->sockfd), msg_recv, MAX_MSG + 1, 0)) == -1) { //recive del servidor
+				printf("Error while recv()\n");
+			}
+
+			msg_recv[len_msg] = '\0';
+
+			if ((len_msg==0)||(strcmp(msg_recv,":exit")==0)){
+				if(len_msg==0) {
+					printf("%s cerro conexion\n",inet_ntoa(cliente->socketaddr_cli.sin_addr));
+				} else {
+					printf("%s solicito salir\n",inet_ntoa(cliente->socketaddr_cli.sin_addr));
+				}
+
+				close(*(cliente->sockfd));
+				cliente_cerrado = 1;
+			}
+			else {
+				printf("%s dice: %s\n",inet_ntoa(cliente->socketaddr_cli.sin_addr),msg_recv);
+
+				printf("Tu: ");
+				leerStdin(msg_recv,MAX_MSG+1);
+				send(*(cliente->sockfd),msg_recv,strlen(msg_recv),0);
+			}
+
+		}
+
+		if(!cliente_cerrado)
+		{
+			close(*(cliente->sockfd));
+			cliente_cerrado = 1;
+		}
+	}
 
 
 }
@@ -115,6 +186,15 @@ void liberar_cliente(struct t_cliente* cliente)
 	free(cliente);
 }
 
+
+void esperar_finalizacion_hilo_conex_client(struct t_cliente* cliente)
+{
+	void* ret_recep;
+
+	if (pthread_join(*cliente->thr, &ret_recep) != 0) {
+		printf("Error al hacer join del hilo\n");
+	}
+}
 
 int main(void) {
 
@@ -140,15 +220,20 @@ int main(void) {
 
 		list_add(lista_clientes,cliente);
 
-		*(cliente->sockfd) = aceptar_clientes(listener,&socketaddr_srv);
+		*(cliente->sockfd) = aceptar_clientes(listener,&(cliente->socketaddr_cli));
 
-		if (pthread_create(cliente->thr, NULL, (void*) hilo_conex_client, cliente->sockfd) != 0) {
+		if (pthread_create(cliente->thr, NULL, (void*) hilo_conex_client, cliente) != 0) {
 			printf("Error al Intentar crear hilo del cliente!!!\n");
 			return -1;
 		}
 	}
 
-	list_iterate(lista_clientes,(void *)liberar_cliente);
+	printf("Esperando finalizacion de hilos de conex a cliente\n");
+	fflush(stdout);
+
+	list_iterate(lista_clientes,(void *)esperar_finalizacion_hilo_conex_client);
+
+	list_destroy_and_destroy_elements(lista_clientes,(void *)liberar_cliente);
 
 	free(lista_clientes);
 

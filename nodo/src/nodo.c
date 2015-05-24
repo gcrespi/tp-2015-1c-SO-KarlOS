@@ -57,6 +57,7 @@ void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser envi
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
 int enviar(int , void*, uint32_t);
+void free_conf_nodo();
 
 //Main
 int main(void) {

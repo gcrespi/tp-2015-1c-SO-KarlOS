@@ -26,6 +26,9 @@
 #include <ifaddrs.h>
 
 //Constantes de la consola
+
+//Constants
+#define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
 #define BOLD "\033[1m"
 #define NORMAL "\033[0m"
@@ -317,79 +320,57 @@ void receive_command(char* readed, int max_command_length){
 }
 
 //---------------------------------------------------------------------------
+
 char execute_command(char* command){
-	int i;
+
+	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","cd","rm","mv","rename","mkdir","rmdir","mvdir",
+													"renamedir","upload","download","md5","blocks","rmblock","cpblock","addnode","rmnode","clear",
+													"exit","","","","","","","","",""};
+
+	int i,salir=0;
 	for(i=0;command[i]==' ';i++);
-	if(command[i]=='\0'){return 0;}
+	if(command[i]=='\0')
+	{	return 0;}
 
 	char** subcommands = string_split(command," ");
-	if(strcmp(subcommands[0],"help")==0){
-		help();
-	}
-	else if(strcmp(subcommands[0],"format")==0){
-		//format();
-	}
-	else if(strcmp(subcommands[0],"pwd")==0){
-		//pwd();
-	}
-	else if(strcmp(subcommands[0],"cd")==0){
-		//cd(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rm")==0){
-		//rm(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"mv")==0){
-		//mv(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"rename")==0){
-		//rename(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"mkdir")==0){
-		//mkdir(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmdir")==0){
-		//rmdir(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"mvdir")==0){
-		//mvdir(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"renamedir")==0){
-		//renamedir(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"upload")==0){
-		//upload(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"download")==0){
-		//download(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"md5")==0){
-		//md5(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"blocks")==0){
-		//blocks(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmblock")==0){
-		//rmblock(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"cpblock")==0){
-		//cpblock(subcommands[1],subcommands[2],subcommands[3]);
-	}
-	else if(strcmp(subcommands[0],"addnode")==0){
-		//addnode(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmnode")==0){
-		//rmnode(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"clear")==0){
-		printf(CLEAR);
-	}
-	else if(strcmp(subcommands[0],"exit")==0){return 1;}
-	else
+
+	for(i=0;(i<MAX_COMMANOS_VALIDOS)&&(strcmp(subcommands[0],comandos_validos[i])!=0);i++);
+
+	switch(i)
 	{
-		printf("%s: no es un comando valido\n",subcommands[0]);
+		case  0: help(); break;
+//		case  1: format(); break;
+//		case  2: pwd(); break;
+//		case  3: cd(subcommands[1]); break;
+//		case  4: rm(subcommands[1]); break;
+//
+//		case  5: mv(subcommands[1],subcommands[2]); break;
+//		case  6: renamedir(subcommands[1],subcommands[2]); break;
+//		case  7: mkdir(subcommands[1]); break;
+//		case  8: rmdir(subcommands[1]); break;
+//		case  9: mvdir(subcommands[1],subcommands[2]); break;
+//
+//		case 10: renamedir(subcommands[1],subcommands[2]); break;
+//		case 11: upload(subcommands[1],subcommands[2]); break;
+//		case 12: download(subcommands[1],subcommands[2]); break;
+//		case 13: md5(subcommands[1]); break;
+//		case 14: blocks(subcommands[1]); break;
+//
+//		case 15: rmblock(subcommands[1],subcommands[2]); break;
+//		case 16: cpblock(subcommands[1],subcommands[2],subcommands[3]); break;
+//		case 17: addnode(subcommands[1]); break;
+//		case 18: rmnode(subcommands[1]); break;
+		case 19: printf(CLEAR); break;
+
+		case 20: salir=1; break;
+
+		default:
+			printf("%s: no es un comando valido\n",subcommands[0]);
+			break;
 	}
+
 	free_string_splits(subcommands);
-	return 0;
+	return salir;
 }
 
 //---------------------------------------------------------------------------

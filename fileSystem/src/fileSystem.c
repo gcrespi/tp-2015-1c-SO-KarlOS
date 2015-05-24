@@ -109,6 +109,7 @@ struct conf_fs {
 
 // La estructura que envia el nodo al FS al iniciarse
 struct info_nodo {
+	int id;
 	int nodo_nuevo;
 	int cant_bloques;
 };
@@ -259,12 +260,19 @@ int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 
 	int result=0;
 
+	if ((result += recivir(socket, &(info_nodo->id))) == -1) { //envia el primer campo
+		perror("Error reciving");
+		exit(-1);
+	}
 	if ((result += recivir(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
-		return -1;
+		perror("Error reciving");
+		exit(-1);
 	}
 	if ((result += recivir(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		return -1;
+		perror("Error reciving");
+		exit(-1);
 	}
+
 	return result;
 }
 

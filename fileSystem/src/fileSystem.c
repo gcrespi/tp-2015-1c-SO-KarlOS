@@ -23,7 +23,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <ifaddrs.h>
+#include "../../connectionlib/connectionlib.h"
+
 
 //Constantes de la consola
 
@@ -112,9 +113,6 @@ struct info_nodo {
 	int cant_bloques;
 };
 
-//Enum del protocolo
-enum protocolo {INFO_NODO};
-
 //(lista de t_nodo)
 t_list* listaNodos;
 
@@ -171,9 +169,7 @@ void help();
 void levantar_arch_conf();
 int recivir_info_nodo (int, struct info_nodo*);
 int recivir_bajo_protocolo(int);
-int recivir(int socket, void *buffer);
 void setSocketAddr(struct sockaddr_in*);
-char* get_IP();
 
 //Variables Globales
 struct conf_fs conf;
@@ -233,23 +229,6 @@ void levantar_arch_conf(){
 }
 
 //---------------------------------------------------------------------------
-char* get_IP(){ //ojala sirva para algo jaja
-	    struct ifaddrs *interface_addr;
-	    struct sockaddr_in* sock_addr;
-	    char* addr;
-
-	    getifaddrs (&interface_addr);
-	    while(interface_addr){
-	        if (interface_addr->ifa_addr->sa_family==AF_INET && strcmp(interface_addr->ifa_name,"eth0")==0 ) {
-	            sock_addr = (struct sockaddr_in*) interface_addr->ifa_addr;
-	        	addr = inet_ntoa(sock_addr->sin_addr);
-	        }
-	        interface_addr = interface_addr->ifa_next;
-	    }
-	    freeifaddrs(interface_addr);
-	    return addr;
-}
-//---------------------------------------------------------------------------
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	direccionDestino->sin_port = htons(conf.puerto_listen); // setea Puerto a conectarme
@@ -284,19 +263,6 @@ int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 		return -1;
 	}
 	if ((result += recivir(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		return -1;
-	}
-	return result;
-}
-
-//---------------------------------------------------------------------------
-int recivir(int socket, void *buffer) {
-	int result=0;
-	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-	if (recv(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
-		return -1;
-	}
-	if ((result += recv(socket, buffer, size_buffer, 0)) == -1) {
 		return -1;
 	}
 	return result;

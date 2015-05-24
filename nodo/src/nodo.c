@@ -25,12 +25,14 @@
 // Estructuras
    // La estructura que envia el nodo al FS al iniciarse
 struct info_nodo {
+	int id;
 	int nodo_nuevo;
 	int cant_bloques;
 };
 
    // Una estructura que contiene todos los datos del arch de conf
 struct conf_nodo {
+	int id;
 	char* ip_fs;
 	int puerto_fs;
 	char* archivo_bin;
@@ -79,6 +81,9 @@ int main(void) {
 void levantar_arch_conf(){
 	t_config* conf_arch;
 	conf_arch = config_create("nodo.cfg");
+	if (config_has_property(conf_arch,"ID")){
+			conf.id = config_get_int_value(conf_arch,"ID");
+		} else printf("Error: el archivo de conf no tiene IP_FS\n");
 	if (config_has_property(conf_arch,"IP_FS")){
 		conf.ip_fs = strdup(config_get_string_value(conf_arch,"IP_FS"));
 	} else printf("Error: el archivo de conf no tiene IP_FS\n");
@@ -116,6 +121,7 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 
 //---------------------------------------------------------------------------
 void setNodoToSend(struct info_nodo *info_envio){
+	info_envio->id = conf.id;
 	info_envio->nodo_nuevo = conf.nodo_nuevo;
 	info_envio->cant_bloques = conf.cant_bloques;
 }
@@ -147,6 +153,9 @@ int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 	int result=0;
 	uint32_t prot = INFO_NODO;
 	if ((result += send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
+		return -1;
+	}
+	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->id))) == -1) { //envia el segundo campo
 		return -1;
 	}
 	if ((result += enviar(socket, &(info_nodo->cant_bloques), sizeof(info_nodo->cant_bloques))) == -1) { //envia el primer campo

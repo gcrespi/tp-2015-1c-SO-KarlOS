@@ -23,9 +23,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <ifaddrs.h>
+#include "../../connectionlib/connectionlib.h"
+
 
 //Constantes de la consola
+
+//Constants
+#define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
 #define BOLD "\033[1m"
 #define NORMAL "\033[0m"
@@ -110,9 +114,6 @@ struct info_nodo {
 	int cant_bloques;
 };
 
-//Enum del protocolo
-enum protocolo {INFO_NODO};
-
 //(lista de t_nodo)
 t_list* listaNodos;
 
@@ -169,9 +170,7 @@ void help();
 void levantar_arch_conf();
 int recivir_info_nodo (int, struct info_nodo*);
 int recivir_bajo_protocolo(int);
-int recivir(int socket, void *buffer);
 void setSocketAddr(struct sockaddr_in*);
-char* get_IP();
 
 //Variables Globales
 struct conf_fs conf;
@@ -231,23 +230,6 @@ void levantar_arch_conf(){
 }
 
 //---------------------------------------------------------------------------
-char* get_IP(){ //ojala sirva para algo jaja
-	    struct ifaddrs *interface_addr;
-	    struct sockaddr_in* sock_addr;
-	    char* addr;
-
-	    getifaddrs (&interface_addr);
-	    while(interface_addr){
-	        if (interface_addr->ifa_addr->sa_family==AF_INET && strcmp(interface_addr->ifa_name,"eth0")==0 ) {
-	            sock_addr = (struct sockaddr_in*) interface_addr->ifa_addr;
-	        	addr = inet_ntoa(sock_addr->sin_addr);
-	        }
-	        interface_addr = interface_addr->ifa_next;
-	    }
-	    freeifaddrs(interface_addr);
-	    return addr;
-}
-//---------------------------------------------------------------------------
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	direccionDestino->sin_port = htons(conf.puerto_listen); // setea Puerto a conectarme
@@ -279,28 +261,18 @@ int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 	int result=0;
 
 	if ((result += recivir(socket, &(info_nodo->id))) == -1) { //envia el primer campo
-		return -1;
+		perror("Error reciving");
+		exit(-1);
 	}
 	if ((result += recivir(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
-		return -1;
+		perror("Error reciving");
+		exit(-1);
 	}
 	if ((result += recivir(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		return -1;
+		perror("Error reciving");
+		exit(-1);
 	}
 
-	return result;
-}
-
-//---------------------------------------------------------------------------
-int recivir(int socket, void *buffer) {
-	int result=0;
-	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-	if (recv(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
-		return -1;
-	}
-	if ((result += recv(socket, buffer, size_buffer, 0)) == -1) {
-		return -1;
-	}
 	return result;
 }
 
@@ -322,79 +294,57 @@ void receive_command(char* readed, int max_command_length){
 }
 
 //---------------------------------------------------------------------------
+
 char execute_command(char* command){
-	int i;
+
+	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","cd","rm","mv","rename","mkdir","rmdir","mvdir",
+													"renamedir","upload","download","md5","blocks","rmblock","cpblock","addnode","rmnode","clear",
+													"exit","","","","","","","","",""};
+
+	int i,salir=0;
 	for(i=0;command[i]==' ';i++);
-	if(command[i]=='\0'){return 0;}
+	if(command[i]=='\0')
+	{	return 0;}
 
 	char** subcommands = string_split(command," ");
-	if(strcmp(subcommands[0],"help")==0){
-		help();
-	}
-	else if(strcmp(subcommands[0],"format")==0){
-		//format();
-	}
-	else if(strcmp(subcommands[0],"pwd")==0){
-		//pwd();
-	}
-	else if(strcmp(subcommands[0],"cd")==0){
-		//cd(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rm")==0){
-		//rm(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"mv")==0){
-		//mv(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"rename")==0){
-		//rename(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"mkdir")==0){
-		//mkdir(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmdir")==0){
-		//rmdir(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"mvdir")==0){
-		//mvdir(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"renamedir")==0){
-		//renamedir(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"upload")==0){
-		//upload(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"download")==0){
-		//download(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"md5")==0){
-		//md5(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"blocks")==0){
-		//blocks(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmblock")==0){
-		//rmblock(subcommands[1],subcommands[2]);
-	}
-	else if(strcmp(subcommands[0],"cpblock")==0){
-		//cpblock(subcommands[1],subcommands[2],subcommands[3]);
-	}
-	else if(strcmp(subcommands[0],"addnode")==0){
-		//addnode(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"rmnode")==0){
-		//rmnode(subcommands[1]);
-	}
-	else if(strcmp(subcommands[0],"clear")==0){
-		printf(CLEAR);
-	}
-	else if(strcmp(subcommands[0],"exit")==0){return 1;}
-	else
+
+	for(i=0;(i<MAX_COMMANOS_VALIDOS)&&(strcmp(subcommands[0],comandos_validos[i])!=0);i++);
+
+	switch(i)
 	{
-		printf("%s: no es un comando valido\n",subcommands[0]);
+		case  0: help(); break;
+//		case  1: format(); break;
+//		case  2: pwd(); break;
+//		case  3: cd(subcommands[1]); break;
+//		case  4: rm(subcommands[1]); break;
+//
+//		case  5: mv(subcommands[1],subcommands[2]); break;
+//		case  6: renamedir(subcommands[1],subcommands[2]); break;
+//		case  7: mkdir(subcommands[1]); break;
+//		case  8: rmdir(subcommands[1]); break;
+//		case  9: mvdir(subcommands[1],subcommands[2]); break;
+//
+//		case 10: renamedir(subcommands[1],subcommands[2]); break;
+//		case 11: upload(subcommands[1],subcommands[2]); break;
+//		case 12: download(subcommands[1],subcommands[2]); break;
+//		case 13: md5(subcommands[1]); break;
+//		case 14: blocks(subcommands[1]); break;
+//
+//		case 15: rmblock(subcommands[1],subcommands[2]); break;
+//		case 16: cpblock(subcommands[1],subcommands[2],subcommands[3]); break;
+//		case 17: addnode(subcommands[1]); break;
+//		case 18: rmnode(subcommands[1]); break;
+		case 19: printf(CLEAR); break;
+
+		case 20: salir=1; break;
+
+		default:
+			printf("%s: no es un comando valido\n",subcommands[0]);
+			break;
 	}
+
 	free_string_splits(subcommands);
-	return 0;
+	return salir;
 }
 
 //---------------------------------------------------------------------------

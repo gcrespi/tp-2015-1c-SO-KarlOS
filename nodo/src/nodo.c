@@ -21,6 +21,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
+#include "../../connectionlib/connectionlib.h"
+
+
 
 // Estructuras
    // La estructura que envia el nodo al FS al iniciarse
@@ -43,9 +46,6 @@ struct conf_nodo {
 	int cant_bloques;
 };
 
-	//Enum del protocolo
-enum protocolo {INFO_NODO};
-
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 int socketfd_fs; // file descriptor del FS
@@ -57,7 +57,6 @@ void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info de
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
-int enviar(int , void*, uint32_t);
 void free_conf_nodo();
 
 //Main
@@ -153,28 +152,20 @@ int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 	int result=0;
 	uint32_t prot = INFO_NODO;
 	if ((result += send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
-		return -1;
+		perror("Error sending");
+		exit(-1);
 	}
 	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->id))) == -1) { //envia el segundo campo
-		return -1;
+		perror("Error sending");
+		exit(-1);
 	}
 	if ((result += enviar(socket, &(info_nodo->cant_bloques), sizeof(info_nodo->cant_bloques))) == -1) { //envia el primer campo
-		return -1;
+		perror("Error sending");
+		exit(-1);
 	}
 	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		return -1;
-	}
-	return result;
-}
-
-//---------------------------------------------------------------------------
-int enviar(int socket, void *buffer, uint32_t size_buffer) {
-	int result=0;
-	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
-		return -1;
-	}
-	if ((result += send(socket, buffer, size_buffer, 0)) == -1) {
-		return -1;
+		perror("Error sending");
+		exit(-1);
 	}
 	return result;
 }

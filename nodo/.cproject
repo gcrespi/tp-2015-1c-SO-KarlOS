@@ -31,6 +31,10 @@
 							<tool id="cdt.managedbuild.tool.gnu.cross.c.linker.41068989" name="Cross GCC Linker" superClass="cdt.managedbuild.tool.gnu.cross.c.linker">
 								<option id="gnu.c.link.option.libs.1607522110" name="Libraries (-l)" superClass="gnu.c.link.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="commons"/>
+									<listOptionValue builtIn="false" value="connectionlib"/>
+								</option>
+								<option id="gnu.c.link.option.paths.193007262" superClass="gnu.c.link.option.paths" valueType="libPaths">
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/connectionlib/Debug}&quot;"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1172866700" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
@@ -44,12 +48,6 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
-					<fileInfo id="cdt.managedbuild.config.gnu.cross.exe.debug.1884305992.1045801925" name="nodo.c" rcbsApplicability="disable" resourcePath="src/nodo.c" toolsToInvoke="cdt.managedbuild.tool.gnu.cross.c.compiler.334018599.1807986082">
-						<tool id="cdt.managedbuild.tool.gnu.cross.c.compiler.334018599.1807986082" name="Cross GCC Compiler" superClass="cdt.managedbuild.tool.gnu.cross.c.compiler.334018599">
-							<option id="gnu.c.compiler.option.include.paths.999211653" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath"/>
-							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1949440608" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
-						</tool>
-					</fileInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>

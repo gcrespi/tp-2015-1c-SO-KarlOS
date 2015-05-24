@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <commons/config.h>
+#include <commons/string.h>
 #include <string.h>
 #include <errno.h>
 #include <netdb.h>
@@ -27,7 +28,6 @@
 struct info_nodo {
 	int nodo_nuevo;
 	int cant_bloques;
-	char* saludo; // TODO eliminar esta linea
 };
 
    // Una estructura que contiene todos los datos del arch de conf
@@ -56,7 +56,7 @@ void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info de
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
-int enviar(int , void*);
+int enviar(int , void*, uint32_t);
 
 //Main
 int main(void) {
@@ -70,6 +70,8 @@ int main(void) {
 
 	solicitarConexionConFS(&socketaddr_fs,&info_envio);
 
+	free_conf_nodo();
+
 	return EXIT_SUCCESS;
 }
 
@@ -78,19 +80,22 @@ void levantar_arch_conf(){
 	t_config* conf_arch;
 	conf_arch = config_create("nodo.cfg");
 	if (config_has_property(conf_arch,"IP_FS")){
-		conf.ip_fs = config_get_string_value(conf_arch,"IP_FS");
+		conf.ip_fs = strdup(config_get_string_value(conf_arch,"IP_FS"));
 	} else printf("Error: el archivo de conf no tiene IP_FS\n");
 	if (config_has_property(conf_arch,"PUERTO_FS")){
 		conf.puerto_fs = config_get_int_value(conf_arch,"PUERTO_FS");
 	} else printf("Error: el archivo de conf no tiene PUERTO_FS\n");
 	if (config_has_property(conf_arch,"ARCHIVO_BIN")){
-		conf.archivo_bin = config_get_string_value(conf_arch,"ARCHIVO_BIN");
+		conf.archivo_bin= strdup(config_get_string_value(conf_arch,"ARCHIVO_BIN"));
 	} else printf("Error: el archivo de conf no tiene ARCHIVO_BIN\n");
 	if (config_has_property(conf_arch,"DIR_TEMP")){
-		conf.dir_temp = config_get_string_value(conf_arch,"DIR_TEMP");
+		conf.dir_temp = strdup(config_get_string_value(conf_arch,"DIR_TEMP"));
 	} else printf("Error: el archivo de conf no tiene DIR_TEMP\n");
+	if (config_has_property(conf_arch,"NODO_NUEVO")){
+		conf.nodo_nuevo = config_get_int_value(conf_arch,"NODO_NUEVO");
+	} else printf("Error: el archivo de conf no tiene NODO_NUEVO\n");
 	if (config_has_property(conf_arch,"IP_NODO")){
-		conf.ip_nodo = config_get_string_value(conf_arch,"IP_NODO");
+		conf.ip_nodo = strdup(config_get_string_value(conf_arch,"IP_NODO"));
 	} else printf("Error: el archivo de conf no tiene IP_NODO\n");
 	if (config_has_property(conf_arch,"PUERTO_NODO")){
 		conf.puerto_nodo = config_get_int_value(conf_arch,"PUERTO_NODO");
@@ -105,7 +110,7 @@ void levantar_arch_conf(){
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	direccionDestino->sin_port = htons(conf.puerto_fs); // setea Puerto a conectarme
-	direccionDestino->sin_addr.s_addr = inet_addr(conf.ip_fs); // Setea Ip a conectarme
+	direccionDestino->sin_addr.s_addr = inet_addr("127.0.0.1"); // Setea Ip a conectarme
 	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
@@ -130,7 +135,8 @@ void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct info_no
 	}
 
 	if (enviar_info_nodo(socketfd_fs, info_envio) == -1) { // envia la estructura al FS
-		printf("Error while send()\n");
+		perror("Error while send()");
+		exit(-1);
 	}
 
 }
@@ -140,28 +146,22 @@ int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 
 	int result=0;
 	uint32_t prot = INFO_NODO;
-
 	if ((result += send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
 		return -1;
 	}
-
-	if ((result += enviar(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
+	if ((result += enviar(socket, &(info_nodo->cant_bloques), sizeof(info_nodo->cant_bloques))) == -1) { //envia el primer campo
 		return -1;
 	}
-
-	if ((result += enviar(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
+	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
 		return -1;
 	}
-
 	return result;
 }
 
 //---------------------------------------------------------------------------
-int enviar(int socket, void *buffer) {
+int enviar(int socket, void *buffer, uint32_t size_buffer) {
 	int result=0;
-	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-	size_buffer = sizeof(*buffer);
-	if ((result += send(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
 		return -1;
 	}
 	if ((result += send(socket, buffer, size_buffer, 0)) == -1) {
@@ -171,4 +171,11 @@ int enviar(int socket, void *buffer) {
 }
 
 //---------------------------------------------------------------------------
+void free_conf_nodo(){
+	free(conf.ip_fs);
+	free(conf.archivo_bin);
+	free(conf.dir_temp);
+	free(conf.ip_nodo);
+}
 
+//---------------------------------------------------------------------------

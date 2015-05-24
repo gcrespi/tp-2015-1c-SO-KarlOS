@@ -171,10 +171,26 @@ int main(void) {
 
 	struct sockaddr_in sockaddr_listener, sockaddr_cli;
 	setSocketAddr(&sockaddr_listener);
-	int listener=socket(AF_INET, SOCK_STREAM, 0), socketfd_cli;
-	bind(listener,(struct sockaddr*) &sockaddr_listener,sizeof(sockaddr_listener));
-	socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*)sizeof(sockaddr_cli));
-
+	int listener = socket(AF_INET, SOCK_STREAM, 0), socketfd_cli;
+	int yes = 1;
+	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
+			== -1) {
+		perror("setsockopt");
+		exit(1);
+	}
+	if (bind(listener,(struct sockaddr*) &sockaddr_listener,sizeof(sockaddr_listener))==-1){
+		perror("Error binding");
+		exit(-1);
+	}
+	if (listen(listener, 100) == -1){
+		perror("Error listening");
+		exit(-1);
+	}
+	int sin_size = sizeof(struct sockaddr_in);
+	if ((socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size))==-1){
+		perror("Error accepting");
+		exit(-1);
+	}
 	recivir_bajo_protocolo(socketfd_cli);
 
 	return EXIT_SUCCESS;
@@ -213,24 +229,24 @@ char* get_IP(){ //ojala sirva para algo jaja
 //---------------------------------------------------------------------------
 void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
-	direccionDestino->sin_port = htons(3214);//conf.puerto_listen); // setea Puerto a conectarme
-	direccionDestino->sin_addr.s_addr = inet_addr(INADDR_ANY); // Setea a la Ip local
+	direccionDestino->sin_port = htons(conf.puerto_listen); // setea Puerto a conectarme
+	direccionDestino->sin_addr.s_addr = htonl(INADDR_ANY); // Setea a la Ip local
 	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 //---------------------------------------------------------------------------
 int recivir_bajo_protocolo(int socket){ //no estoy seguro si esto sirve
-	int result=0;
+  	int result=0;
 	uint32_t prot;
 	if ((result += recv(socket, &prot, sizeof(uint32_t), 0)) == -1) {
 		return -1;
 	}
-			struct info_nodo nodo_env;
+	struct info_nodo nodo_env;
 	switch(prot){
 		case INFO_NODO:
 			recivir_info_nodo(socket, &nodo_env);
-			printf("Cantidad de bloques: %d",nodo_env.cant_bloques);
-			printf("Nodo nuevo: %d",nodo_env.nodo_nuevo);
+			printf("Cantidad de bloques: %d\n",nodo_env.cant_bloques);
+			printf("Nodo nuevo: %d\n",nodo_env.nodo_nuevo);
 			break;
 		default: return -1;
 	}
@@ -244,11 +260,9 @@ int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 	if ((result += recivir(socket, &(info_nodo->cant_bloques))) == -1) { //envia el primer campo
 		return -1;
 	}
-
 	if ((result += recivir(socket, &(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
 		return -1;
 	}
-
 	return result;
 }
 
@@ -256,7 +270,7 @@ int recivir_info_nodo (int socket, struct info_nodo *info_nodo){
 int recivir(int socket, void *buffer) {
 	int result=0;
 	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-	if ((result += recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+	if (recv(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
 		return -1;
 	}
 	if ((result += recv(socket, buffer, size_buffer, 0)) == -1) {

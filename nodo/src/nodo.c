@@ -20,8 +20,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico
-
+#include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
 
 // Estructuras
    // La estructura que envia el nodo al FS al iniciarse

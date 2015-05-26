@@ -155,7 +155,7 @@ int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
 		perror("Error sending");
 		exit(-1);
 	}
-	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->id))) == -1) { //envia el segundo campo
+	if ((result += enviar(socket, &(info_nodo->id), sizeof(info_nodo->id))) == -1) { //envia el segundo campo
 		perror("Error sending");
 		exit(-1);
 	}

@@ -19,12 +19,13 @@
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
 #include <ifaddrs.h>
 
-
 //Enum del protocolo
 enum protocolo {INFO_NODO};
 
 int enviar(int , void*, uint32_t);
 int recivir(int socket, void *buffer);
 char* get_IP();
+
+void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port); // setea el socketaddr para escuchar clientes o conectar con servidor
 
 #endif /* CONNECTIONLIB_H_ */

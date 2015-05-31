@@ -49,3 +49,11 @@ char* get_IP(){ //ojala sirva para algo jaja
 	    freeifaddrs(interface_addr);
 	    return addr;
 }
+
+//---------------------------------------------------------------------------
+void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port) {
+	address->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
+	address->sin_port = htons(port); // setea Puerto a conectarme
+	address->sin_addr.s_addr = inet_addr(ip); // Setea Ip a conectarme
+	memset(&(address->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
+}

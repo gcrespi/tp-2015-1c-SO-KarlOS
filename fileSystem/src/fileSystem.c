@@ -26,7 +26,6 @@
 #include <pthread.h>
 #include "../../connectionlib/connectionlib.h"
 
-
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
@@ -36,12 +35,11 @@
 
 //  Estados del nodo
 enum t_estado_nodo {
-	DESCONECTADO,CONECTADO,PENDIENTE
+	DESCONECTADO, CONECTADO, PENDIENTE
 };
 
 //Estructura de carpetas del FS (Se persiste)
-struct t_dir
-{
+struct t_dir {
 	int id_dir;
 	char *nombre;
 	int id_padre;
@@ -85,8 +83,7 @@ struct t_bloque {
 };
 
 //Se persiste, sino perdería toda la info sobre los archivos guardados y sus bloques
-struct t_archivo
-{
+struct t_archivo {
 	//codigo unico del archivo fragmentado
 	int id_archivo;
 
@@ -125,7 +122,6 @@ t_list* listaDir;
 //(lista de t_archivo)
 t_list* listaArchivos;
 
-
 int estaActivoNodo(int nro_nodo) {
 	int _nodoConNumeroBuscadoActivo(struct t_nodo nodo) {
 		return (nro_nodo == nodo.id_nodo) && (nodo.estado);
@@ -163,15 +159,15 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //int atenderSolicitudesDeMarta();
 
 //Prototipos de la consola
-void free_string_splits (char**);
-void receive_command(char*,int);
+void free_string_splits(char**);
+void receive_command(char*, int);
 char execute_command(char*);
 void help();
 void lsnode();
 
 //Prototipos
 void levantar_arch_conf();
-void recivir_info_nodo (int);
+void recivir_info_nodo(int);
 int recivir_bajo_protocolo(int);
 void setSocketAddr(struct sockaddr_in*);
 void hilo_listener();
@@ -183,19 +179,19 @@ char end; //Indicador de que deben terminar todos los hilos
 t_list *list_info_nodo; //Lista de nodos que solicitan conectarse al FS
 int listener;
 
-int main(void) {                                                                  //TODO aca esta el main
+int main(void) {                                         //TODO aca esta el main
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	pthread_t t_listener;
-	pthread_create(&t_listener, NULL, (void*)hilo_listener, NULL);
+	pthread_create(&t_listener, NULL, (void*) hilo_listener, NULL);
 
-	char command[MAX_COMMAND_LENGTH+1];
+	char command[MAX_COMMAND_LENGTH + 1];
 	puts(CLEAR NORMAL"Console KarlOS\nType 'help' to show the commands");
 	do {
 		printf("> ");
-		receive_command(command,MAX_COMMAND_LENGTH+1);
+		receive_command(command, MAX_COMMAND_LENGTH + 1);
 		end = execute_command(command);
-	} while(!end);
+	} while (!end);
 
 	pthread_join(t_listener, NULL);
 
@@ -203,7 +199,7 @@ int main(void) {                                                                
 }
 
 //---------------------------------------------------------------------------
-void hilo_listener(){
+void hilo_listener() {
 	list_info_nodo = list_create();
 
 	fd_set master; // Nuevo set principal
@@ -222,11 +218,12 @@ void hilo_listener(){
 		perror("setsockopt");
 		exit(1);
 	}
-	if (bind(listener,(struct sockaddr*) &sockaddr_listener,sizeof(sockaddr_listener))==-1){
+	if (bind(listener, (struct sockaddr*) &sockaddr_listener,
+			sizeof(sockaddr_listener)) == -1) {
 		perror("Error binding");
 		exit(-1);
 	}
-	if (listen(listener, 100) == -1){
+	if (listen(listener, 100) == -1) {
 		perror("Error listening");
 		exit(-1);
 	}
@@ -242,47 +239,52 @@ void hilo_listener(){
 		for (i = 0; i <= fd_max; i++) {
 			if (FD_ISSET(i, &read_fds)) {
 				if (i == listener) {
-					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
+					socketfd_cli = accept(listener,
+							(struct sockaddr*) &sockaddr_cli,
+							(socklen_t*) &sin_size);
 					recivir_bajo_protocolo(socketfd_cli);
 					FD_SET(socketfd_cli, &master);
-					if (socketfd_cli > fd_max) fd_max = socketfd_cli;
+					if (socketfd_cli > fd_max)
+						fd_max = socketfd_cli;
 				}
 			}
 		}
-	} while(!end);
+	} while (!end);
 
-	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+	list_destroy_and_destroy_elements(list_info_nodo,
+			(void*) info_nodo_destroy);
 }
 
 //---------------------------------------------------------------------------
-int recivir_bajo_protocolo(int socket){
+int recivir_bajo_protocolo(int socket) {
 	uint32_t prot;
 	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
 		return -1;
 	}
-	switch(prot){
-		case INFO_NODO:
-			recivir_info_nodo(socket);
-			break;
-		default: return -1;
+	switch (prot) {
+	case INFO_NODO:
+		recivir_info_nodo(socket);
+		break;
+	default:
+		return -1;
 	}
 	return prot;
 }
 //---------------------------------------------------------------------------
-void recivir_info_nodo (int socket){
+void recivir_info_nodo(int socket) {
 
-struct info_nodo* info_nodo;
-info_nodo = malloc(sizeof(struct info_nodo));
+	struct info_nodo* info_nodo;
+	info_nodo = malloc(sizeof(struct info_nodo));
 
-	if (recivir(socket, &(info_nodo->id)) == -1) { //recive id del nodo
+	if (recibir(socket, &(info_nodo->id)) == -1) { //recive id del nodo
 		perror("Error reciving id");
 		exit(-1);
 	}
-	if (recivir(socket, &(info_nodo->cant_bloques)) == -1) { //recive cantidad de bloques del nodo
+	if (recibir(socket, &(info_nodo->cant_bloques)) == -1) { //recive cantidad de bloques del nodo
 		perror("Error reciving cant_bloques");
 		exit(-1);
 	}
-	if (recivir(socket, &(info_nodo->nodo_nuevo)) == -1) { //recive si el nodo es nuevo o no
+	if (recibir(socket, &(info_nodo->nodo_nuevo)) == -1) { //recive si el nodo es nuevo o no
 		perror("Error reciving nodo_nuevo");
 		exit(-1);
 	}
@@ -292,20 +294,22 @@ info_nodo = malloc(sizeof(struct info_nodo));
 }
 
 //---------------------------------------------------------------------------
-static void info_nodo_destroy(struct info_nodo* self){
+static void info_nodo_destroy(struct info_nodo* self) {
 	free(self);
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf(){
+void levantar_arch_conf() {
 	t_config* conf_arch;
 	conf_arch = config_create("fs.cfg");
-	if (config_has_property(conf_arch,"PUERTO_LISTEN")){
-		conf.puerto_listen = config_get_int_value(conf_arch,"PUERTO_LISTEN");
-	} else printf("Error: el archivo de conf no tiene PUERTO_LISTEN\n");
-	if (config_has_property(conf_arch,"MIN_CANT_NODOS")){
-		conf.min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
-	} else printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
+	if (config_has_property(conf_arch, "PUERTO_LISTEN")) {
+		conf.puerto_listen = config_get_int_value(conf_arch, "PUERTO_LISTEN");
+	} else
+		printf("Error: el archivo de conf no tiene PUERTO_LISTEN\n");
+	if (config_has_property(conf_arch, "MIN_CANT_NODOS")) {
+		conf.min_cant_nodos = config_get_int_value(conf_arch, "MIN_CANT_NODOS");
+	} else
+		printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
 	config_destroy(conf_arch);
 }
 
@@ -318,10 +322,10 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 }
 
 //---------------------------------------------------------------------------
-void free_string_splits (char** strings){
-	char **aux=strings;
+void free_string_splits(char** strings) {
+	char **aux = strings;
 
-	while(*aux != NULL){
+	while (*aux != NULL) {
 		free(*aux);
 		aux++;
 	}
@@ -329,31 +333,39 @@ void free_string_splits (char** strings){
 }
 
 //---------------------------------------------------------------------------
-void receive_command(char* readed, int max_command_length){
-	fgets(readed,max_command_length,stdin);
-	readed[strlen(readed)-1] = '\0';
+void receive_command(char* readed, int max_command_length) {
+	fgets(readed, max_command_length, stdin);
+	readed[strlen(readed) - 1] = '\0';
 }
 
 //---------------------------------------------------------------------------
 
-char execute_command(char* command){
+char execute_command(char* command) {
 
-	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","cd","rm","mv","rename","mkdir","rmdir","mvdir",
-													"renamedir","upload","download","md5","blocks","rmblock","cpblock","lsnode","addnode","rmnode",
-													"clear","exit","","","","","","","",""};
+	char comandos_validos[MAX_COMMANOS_VALIDOS][16] = { "help", "format", "pwd",
+			"cd", "rm", "mv", "rename", "mkdir", "rmdir", "mvdir", "renamedir",
+			"upload", "download", "md5", "blocks", "rmblock", "cpblock",
+			"lsnode", "addnode", "rmnode", "clear", "exit", "", "", "", "", "",
+			"", "", "" };
 
-	int i,salir=0;
-	for(i=0;command[i]==' ';i++);
-	if(command[i]=='\0')
-	{	return 0;}
+	int i, salir = 0;
+	for (i = 0; command[i] == ' '; i++)
+		;
+	if (command[i] == '\0') {
+		return 0;
+	}
 
-	char** subcommands = string_split(command," ");
+	char** subcommands = string_split(command, " ");
 
-	for(i=0;(i<MAX_COMMANOS_VALIDOS)&&(strcmp(subcommands[0],comandos_validos[i])!=0);i++);
+	for (i = 0;
+			(i < MAX_COMMANOS_VALIDOS)
+					&& (strcmp(subcommands[0], comandos_validos[i]) != 0); i++)
+		;
 
-	switch(i)
-	{
-		case  0: help(); break;
+	switch (i) {
+	case 0:
+		help();
+		break;
 //		case  1: format(); break;
 //		case  2: pwd(); break;
 //		case  3: cd(subcommands[1]); break;
@@ -374,16 +386,22 @@ char execute_command(char* command){
 //		case 15: rmblock(subcommands[1],subcommands[2]); break;
 //		case 16: cpblock(subcommands[1],subcommands[2],subcommands[3]); break;
 
-		case 17: lsnode(); break;
+	case 17:
+		lsnode();
+		break;
 //		case 18: addnode(subcommands[1]); break;
 //		case 19: rmnode(subcommands[1]); break;
 
-		case 20: printf(CLEAR); break;
-		case 21: salir=1; break;
+	case 20:
+		printf(CLEAR);
+		break;
+	case 21:
+		salir = 1;
+		break;
 
-		default:
-			printf("%s: no es un comando valido\n",subcommands[0]);
-			break;
+	default:
+		printf("%s: no es un comando valido\n", subcommands[0]);
+		break;
 	}
 
 	free_string_splits(subcommands);
@@ -391,23 +409,34 @@ char execute_command(char* command){
 }
 
 //---------------------------------------------------------------------------
-void help(){
+void help() {
 	puts(BOLD" format"NORMAL" -> Formatea el MDFS.");
-	puts(BOLD" pwd"NORMAL" -> Indica la ubicacion actual.");//?????
-	puts(BOLD" cd (path dir)"NORMAL" -> Mueve la ubicacion actual al directorio (path dir)."); //?????
+	puts(BOLD" pwd"NORMAL" -> Indica la ubicacion actual."); //?????
+	puts(
+			BOLD" cd (path dir)"NORMAL" -> Mueve la ubicacion actual al directorio (path dir)."); //?????
 	puts(BOLD" rm (path file)"NORMAL" -> Elimina el archivo (path file).");
-	puts(BOLD" mv (old path file) (new path file)"NORMAL" -> Mueve el archivo de (old path file) a (new path file).");
-	puts(BOLD" rename (old path file) (nuevo path file)"NORMAL" -> Renombra el archivo (old name file) con (new name file)."); //?????
+	puts(
+			BOLD" mv (old path file) (new path file)"NORMAL" -> Mueve el archivo de (old path file) a (new path file).");
+	puts(
+			BOLD" rename (old path file) (nuevo path file)"NORMAL" -> Renombra el archivo (old name file) con (new name file)."); //?????
 	puts(BOLD" mkdir (path dir)"NORMAL" -> Crea el directorio (path dir).");
 	puts(BOLD" rmdir (path dir)"NORMAL" -> Elimina el directorio (path dir).");
-	puts(BOLD" mvdir (old path dir) (new path dir)"NORMAL" -> Mueve el directorio de (old path dir) a (new path dir).");
-	puts(BOLD" renamedir (old path dir) (nuevo path dir)"NORMAL" -> Renombra el directorio (old name dir) con (new name dir)."); //?????
-	puts(BOLD" upload (local path file) (MDFS path file)"NORMAL" -> Copia el archivo del filesystem local (local path file) al MDFS (MDFS path file).");
-	puts(BOLD" download (MDFS path file) (local path file)"NORMAL" -> Copia el archivo del MDFS (MDFS path file) al filesystem local (local path file).");
-	puts(BOLD" md5 (path file)"NORMAL" -> Solicita el MD5 del archivo path (file).");
-	puts(BOLD" blocks (path file)"NORMAL" -> Muestra los bloques que componen el archivo (path file).");
-	puts(BOLD" rmblock (num block) (path file)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
-	puts(BOLD" cpblock (num block) (old path file) (new path file)"NORMAL" -> Copia el bloque nro (num block) del archivo (old path file) en el archivo (new path file).");
+	puts(
+			BOLD" mvdir (old path dir) (new path dir)"NORMAL" -> Mueve el directorio de (old path dir) a (new path dir).");
+	puts(
+			BOLD" renamedir (old path dir) (nuevo path dir)"NORMAL" -> Renombra el directorio (old name dir) con (new name dir)."); //?????
+	puts(
+			BOLD" upload (local path file) (MDFS path file)"NORMAL" -> Copia el archivo del filesystem local (local path file) al MDFS (MDFS path file).");
+	puts(
+			BOLD" download (MDFS path file) (local path file)"NORMAL" -> Copia el archivo del MDFS (MDFS path file) al filesystem local (local path file).");
+	puts(
+			BOLD" md5 (path file)"NORMAL" -> Solicita el MD5 del archivo path (file).");
+	puts(
+			BOLD" blocks (path file)"NORMAL" -> Muestra los bloques que componen el archivo (path file).");
+	puts(
+			BOLD" rmblock (num block) (path file)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
+	puts(
+			BOLD" cpblock (num block) (old path file) (new path file)"NORMAL" -> Copia el bloque nro (num block) del archivo (old path file) en el archivo (new path file).");
 	puts(BOLD" lsnode"NORMAL" -> Lista los nodos disponibles para agregar.");
 	puts(BOLD" addnode (node)"NORMAL" -> Agrega el nodo de datos (node).");
 	puts(BOLD" rmnode (node)"NORMAL" -> Elimina el nodo de datos (node).");
@@ -416,19 +445,19 @@ void help(){
 }
 
 //---------------------------------------------------------------------------
-void lsnode(){
+void lsnode() {
 	int lsize = list_size(list_info_nodo);
-	if(lsize==0){
+	if (lsize == 0) {
 		puts("No hay nodos disponibles para agregar :(");
 	} else {
 		puts("Nodos disponibles para agregar:");
 	}
 	struct info_nodo* ptr_inodo;
 	int i;
-	for(i=0; i<lsize; i++){
+	for (i = 0; i < lsize; i++) {
 		ptr_inodo = list_get(list_info_nodo, i);
-		printf("\nID: %d\n",ptr_inodo->id);
-		printf("Cantidad de bloques: %d\n",ptr_inodo->cant_bloques);
-		printf("Nodo nuevo: %d\n",ptr_inodo->nodo_nuevo);
+		printf("\nID: %d\n", ptr_inodo->id);
+		printf("Cantidad de bloques: %d\n", ptr_inodo->cant_bloques);
+		printf("Nodo nuevo: %d\n", ptr_inodo->nodo_nuevo);
 	}
 }

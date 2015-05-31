@@ -52,7 +52,7 @@ int socketfd_fs; // file descriptor del FS
 
 
 //Prototipos
-void levantar_arch_conf(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
+void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
 void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info del nodo
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
@@ -61,7 +61,7 @@ void free_conf_nodo();
 
 //Main
 int main(void) {
-	levantar_arch_conf();
+	levantar_arch_conf_nodo();
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
@@ -77,7 +77,7 @@ int main(void) {
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf(){
+void levantar_arch_conf_nodo(){
 	t_config* conf_arch;
 	conf_arch = config_create("nodo.cfg");
 	if (config_has_property(conf_arch,"ID")){

@@ -53,7 +53,6 @@ int socketfd_fs; // file descriptor del FS
 
 //Prototipos
 void levantar_arch_conf(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
-void setSocketAddr(struct sockaddr_in*); // setea el socketaddr segun la info del nodo
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
@@ -67,7 +66,7 @@ int main(void) {
 	setNodoToSend(&info_envio);
 
 	struct sockaddr_in socketaddr_fs;
-	setSocketAddr(&socketaddr_fs);
+	setSocketAddrStd(&socketaddr_fs,conf.ip_fs,conf.puerto_fs);
 
 	solicitarConexionConFS(&socketaddr_fs,&info_envio);
 
@@ -108,14 +107,6 @@ void levantar_arch_conf(){
 		conf.cant_bloques = config_get_int_value(conf_arch,"CANT_BLOQUES");
 	} else printf("Error: el archivo de conf no tiene CANT_BLOQUES\n");
 	config_destroy(conf_arch);
-}
-
-//---------------------------------------------------------------------------
-void setSocketAddr(struct sockaddr_in* direccionDestino) {
-	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
-	direccionDestino->sin_port = htons(conf.puerto_fs); // setea Puerto a conectarme
-	direccionDestino->sin_addr.s_addr = inet_addr("127.0.0.1"); // Setea Ip a conectarme
-	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 //---------------------------------------------------------------------------

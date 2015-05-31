@@ -36,7 +36,7 @@
 
 //  Estados del nodo
 enum t_estado_nodo {
-	DESCONECTADO,CONECTADO,PENDIENTE
+	DESCONECTADO,CONECTADO,PENDIENTE  // todo Pendiente que seria?
 };
 
 //Estructura de carpetas del FS (Se persiste)
@@ -114,6 +114,7 @@ struct info_nodo {
 	int id;
 	int nodo_nuevo;
 	int cant_bloques;
+	int socketfd_nodo;
 };
 
 //(lista de t_nodo)
@@ -168,6 +169,7 @@ void receive_command(char*,int);
 char execute_command(char*);
 void help();
 void lsnode();
+void addnode(char*);
 
 //Prototipos
 void levantar_arch_conf();
@@ -181,7 +183,6 @@ static void info_nodo_destroy(struct info_nodo*);
 struct conf_fs conf; //Configuracion del fs
 char end; //Indicador de que deben terminar todos los hilos
 t_list *list_info_nodo; //Lista de nodos que solicitan conectarse al FS
-int listener;
 
 int main(void) {                                                                  //TODO aca esta el main
 
@@ -211,10 +212,10 @@ void hilo_listener(){
 	FD_ZERO(&master); // Vacio los sets
 	FD_ZERO(&read_fds);
 	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
-	int i; // para los for
 	struct sockaddr_in sockaddr_listener, sockaddr_cli;
 	setSocketAddr(&sockaddr_listener);
-	listener = socket(AF_INET, SOCK_STREAM, 0);
+
+	int listener = socket(AF_INET, SOCK_STREAM, 0);
 	int socketfd_cli;
 	int yes = 1;
 	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
@@ -236,7 +237,8 @@ void hilo_listener(){
 	fd_max = listener;
 	int sin_size = sizeof(struct sockaddr_in);
 
-	do {
+	int i;
+	while(!end){
 		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
 		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
 		for (i = 0; i <= fd_max; i++) {
@@ -249,9 +251,10 @@ void hilo_listener(){
 				}
 			}
 		}
-	} while(!end);
+	}
 
 	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+	close(listener);
 }
 
 //---------------------------------------------------------------------------
@@ -286,6 +289,7 @@ info_nodo = malloc(sizeof(struct info_nodo));
 		perror("Error reciving nodo_nuevo");
 		exit(-1);
 	}
+	info_nodo->socketfd_nodo = socket;
 
 	list_add(list_info_nodo, info_nodo);
 
@@ -375,7 +379,7 @@ char execute_command(char* command){
 //		case 16: cpblock(subcommands[1],subcommands[2],subcommands[3]); break;
 
 		case 17: lsnode(); break;
-//		case 18: addnode(subcommands[1]); break;
+		case 18: addnode(subcommands[1]); break;
 //		case 19: rmnode(subcommands[1]); break;
 
 		case 20: printf(CLEAR); break;
@@ -392,6 +396,7 @@ char execute_command(char* command){
 
 //---------------------------------------------------------------------------
 void help(){
+	puts(BOLD" help"NORMAL" -> Muestra los comandos validos.");
 	puts(BOLD" format"NORMAL" -> Formatea el MDFS.");
 	puts(BOLD" pwd"NORMAL" -> Indica la ubicacion actual.");//?????
 	puts(BOLD" cd (path dir)"NORMAL" -> Mueve la ubicacion actual al directorio (path dir)."); //?????
@@ -427,8 +432,23 @@ void lsnode(){
 	int i;
 	for(i=0; i<lsize; i++){
 		ptr_inodo = list_get(list_info_nodo, i);
-		printf("\nID: %d\n",ptr_inodo->id);
-		printf("Cantidad de bloques: %d\n",ptr_inodo->cant_bloques);
-		printf("Nodo nuevo: %d\n",ptr_inodo->nodo_nuevo);
+		printf(" ID: %d\n",ptr_inodo->id);
+		printf("  *Cantidad de bloques: %d\n",ptr_inodo->cant_bloques);
+		printf("  *Nodo nuevo: %d\n",ptr_inodo->nodo_nuevo);
 	}
+}
+
+//---------------------------------------------------------------------------
+void addnode(char* IDstr){
+	int ID = strtol(IDstr, NULL, 10);
+	int _hasTheSameID(struct info_nodo* ninf){
+		return ninf->id == ID;
+	}
+	struct info_nodo* infnod = list_remove_by_condition(list_info_nodo, (void*) _hasTheSameID);
+	struct t_nodo nuevo_nodo;
+		nuevo_nodo.id_nodo = infnod->id;
+		nuevo_nodo.estado = infnod->nodo_nuevo;
+		nuevo_nodo.cantidad_bloques = infnod->cant_bloques;
+		nuevo_nodo.socketfd_nodo = infnod ->socketfd_nodo;
+	//TODO aca tendria que ver donde se almacena la info..
 }

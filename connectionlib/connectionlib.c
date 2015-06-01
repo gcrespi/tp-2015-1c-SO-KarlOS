@@ -145,31 +145,50 @@ int enviar_string(int socket, char *string) {
 
 //---------------------------------------------------------------------------
 int enviar(int socket, void *buffer, uint32_t size_buffer) {
-	int result = 0;
+
 	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
 		mostrar_error(-1, "Error sending");
 		return -1;
 	}
-	if ((result += send(socket, buffer, size_buffer, 0)) == -1) {
-		mostrar_error(-1, "Error sending");
-		return -1;
+
+	//TODO TESTME
+	uint32_t size_sended = 0;
+	while (size_sended < size_buffer) {
+		uint32_t sending;
+
+		if ((sending = send(socket, (buffer + size_sended), (size_buffer - size_sended), 0)) == -1) {
+			mostrar_error(-1, "Error sending");
+			return -1;
+		}
+
+		size_sended += sending;
 	}
-	return result;
+
+	return 0;
 }
 
 //---------------------------------------------------------------------------
 int recibir(int socket, void *buffer) {
-	int result = 0;
+
 	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
 	if (recv(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
 		mostrar_error(-1, "Error reciving");
 		return -1;
 	}
-	if ((result += recv(socket, buffer, size_buffer, 0)) == -1) {
-		mostrar_error(-1, "Error reciving");
-		return -1;
+
+	//TODO TESTME
+	uint32_t size_received = 0;
+	while (size_received < size_buffer) {
+		uint32_t receiving;
+
+		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
+			mostrar_error(-1, "Error receiving");
+			return -1;
+		}
+
+		size_received += receiving;
 	}
-	return result;
+	return 0;
 }
 
 //---------------------------------------------------------------------------

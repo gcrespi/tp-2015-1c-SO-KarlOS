@@ -99,12 +99,12 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			break;
 
 		case FINISHED_JOB:
-			//termino el job exitosamente
+			log_info(paranoid_log,"Se Terminó Exitosamente el Job");
 			finished = 1;
 			break;
 
 		case DISCONNECTED:
-			//se desconectó marta de forma inesperada
+			log_error(paranoid_log,"MaRTA se desconectó de forma inesperada");
 			error = 2;
 			break;
 

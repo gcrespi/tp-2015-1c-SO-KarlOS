@@ -174,7 +174,7 @@ void addnode(char*);
 //Prototipos
 void levantar_arch_conf();
 void recivir_info_nodo (int);
-int recivir_bajo_protocolo(int);
+int recivir_instrucciones(int);
 void setSocketAddr(struct sockaddr_in*);
 void hilo_listener();
 static void info_nodo_destroy(struct info_nodo*);
@@ -245,7 +245,7 @@ void hilo_listener(){
 			if (FD_ISSET(i, &read_fds)) {
 				if (i == listener) {
 					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
-					recivir_bajo_protocolo(socketfd_cli);
+					recivir_instrucciones(socketfd_cli);
 					FD_SET(socketfd_cli, &master);
 					if (socketfd_cli > fd_max) fd_max = socketfd_cli;
 				}
@@ -258,7 +258,7 @@ void hilo_listener(){
 }
 
 //---------------------------------------------------------------------------
-int recivir_bajo_protocolo(int socket){
+int recivir_instrucciones(int socket){
 	uint32_t prot;
 	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
 		return -1;

@@ -13,6 +13,7 @@
 #include <commons/config.h>
 #include <commons/string.h>
 #include <commons/collections/list.h>
+#include <commons/log.h>
 #include <string.h>
 #include <errno.h>
 #include <netdb.h>
@@ -49,27 +50,24 @@ void esperar_instrucciones_de_MaRTA(int socket);
 void free_info_job(struct info_new_job* info);
 void set_new_job(struct conf_job conf, struct info_new_job* new_job);
 
+t_log* paranoid_log;
+
 //-------------------------------------------------------------------------------------
-int main(void) {
+int solicitarConexionConMarta(struct conf_job conf) {
 
-	struct conf_job conf; // estructura que contiene la info del arch de conf
-	levantar_arch_conf_job(&conf);
+	log_debug(paranoid_log, "Solicitando conexión con MaRTA...");
+	int socketfd_MaRTA = solicitarConexionCon(conf.ip_MaRTA, conf.port_MaRTA);
 
+	if (socketfd_MaRTA != -1) {
+		log_info(paranoid_log, "Conexión con MaRTA establecida IP: %s, Puerto: %i", conf.ip_MaRTA, conf.port_MaRTA);
+	} else {
+		log_error(paranoid_log, "Conexión con MaRTA FALLIDA!!! IP: %s, Puerto: %i", conf.ip_MaRTA, conf.port_MaRTA);
+		exit(-1);
+	}
 
-	int socketfd_MaRTA = solicitarConexionCon(conf.ip_MaRTA,conf.port_MaRTA);
-
-	struct info_new_job new_job;
-	set_new_job(conf, &new_job);
-
-	enviar_nuevo_job_a_MaRTA(socketfd_MaRTA, new_job);
-
-	esperar_instrucciones_de_MaRTA(socketfd_MaRTA);
-
-	free_conf_job(&conf);
-	free_info_job(&new_job);
-
-	return EXIT_SUCCESS;
+	return socketfd_MaRTA;
 }
+
 
 //---------------------------------------------------------------------------
 void set_new_job(struct conf_job conf, struct info_new_job* new_job) {
@@ -81,8 +79,10 @@ void set_new_job(struct conf_job conf, struct info_new_job* new_job) {
 //---------------------------------------------------------------------------
 void esperar_instrucciones_de_MaRTA(int socket) {
 
-	enum protocolo prot;
+	uint32_t prot;
 	int finished = 0, error = 0;
+
+	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
 	while ((!finished) && (!error)) {
 
@@ -108,6 +108,11 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			error = 2;
 			break;
 
+		case -1:
+			log_error(paranoid_log,"No se pudo recivir instrucciones de MaRTA");
+			exit(-1);
+			break;
+
 		default:
 			//se produjo un error inesperado
 			error = 1;
@@ -121,72 +126,40 @@ int enviar_nuevo_job_a_MaRTA(int socket, struct info_new_job info_job) {
 
 	int result = 0;
 
-	enviar_protocolo(socket, NUEVO_JOB);
+	log_debug(paranoid_log, "Enviando Target del Job");
 
-	enviar_int(socket, info_job.combiner);
-	enviar_string(socket, info_job.paths_to_apply_files);
-	enviar_string(socket, info_job.path_result_file);
+	result = (result != 1) ? enviar_protocolo(socket, NUEVO_JOB) : result;
+
+	result = (result != 1) ? enviar_int(socket, info_job.combiner) : result;
+	result = (result != 1) ? enviar_string(socket, info_job.paths_to_apply_files) : result;
+	result = (result != 1) ? enviar_string(socket, info_job.path_result_file) : result;
+
+	if (result == -1) {
+		log_error(paranoid_log, "No se pudo enviar Target del Job");
+		exit(-1);
+	}
 
 	return result;
 }
 
-
-//---------------------------------------------------------------------------
-void comprobar_existan_properties(int cant_properties, char** properties,
-		t_config* conf_arch) {
-	int i;
-
-	for (i = 0;
-			(i < cant_properties) && (config_has_property(conf_arch, properties[i]));
-			i++)
-		;
-
-	if(i<cant_properties)
-	{
-		for (i = 0; i < cant_properties; i++) {
-			if (!config_has_property(conf_arch, properties[i])) {
-				printf("Error: el archivo de conf no tiene %s\n",
-						properties[i]);
-			}
-		}
-		exit(-1);
-	}
-}
-
-//---------------------------------------------------------------------------
-void free_string_splits(char** strings) {
-	char **aux = strings;
-
-	while (*aux != NULL) {
-		free(*aux);
-		aux++;
-	}
-	free(strings);
-}
-
-
-
 //---------------------------------------------------------------------------
 void levantar_arch_conf_job(struct conf_job* conf) {
 
-	char** properties = string_split("IP_MARTA,PUERTO_MARTA,MAPPER,REDUCE,COMBINER,ARCHIVOS,RESULTADO",",");
+	char** properties = string_split("IP_MARTA,PUERTO_MARTA,MAPPER,REDUCE,COMBINER,ARCHIVOS,RESULTADO", ",");
 	t_config* conf_arch = config_create("job.cfg");
 
-	comprobar_existan_properties(7,properties,conf_arch);
-
-	conf->ip_MaRTA = strdup(
-			config_get_string_value(conf_arch, properties[0]));
-	conf->port_MaRTA = config_get_int_value(conf_arch, properties[1]);
-	conf->path_map = strdup(
-			config_get_string_value(conf_arch, properties[2]));
-	conf->path_reduce = strdup(
-			config_get_string_value(conf_arch, properties[3]));
-	conf->combiner = config_get_int_value(conf_arch, properties[4]);
-	conf->paths_to_apply_files = strdup(
-			config_get_string_value(conf_arch, properties[5]));
-	conf->path_result_file = strdup(
-			config_get_string_value(conf_arch, properties[6]));
-
+	if(has_all_properties(7, properties, conf_arch)) {
+		conf->ip_MaRTA = strdup(config_get_string_value(conf_arch, properties[0]));
+		conf->port_MaRTA = config_get_int_value(conf_arch, properties[1]);
+		conf->path_map = strdup(config_get_string_value(conf_arch, properties[2]));
+		conf->path_reduce = strdup(config_get_string_value(conf_arch, properties[3]));
+		conf->combiner = config_get_int_value(conf_arch, properties[4]);
+		conf->paths_to_apply_files = strdup(config_get_string_value(conf_arch, properties[5]));
+		conf->path_result_file = strdup(config_get_string_value(conf_arch, properties[6]));
+	} else {
+		log_error(paranoid_log,"Faltan propiedades en archivo de Configuración");
+		exit(-1);
+	}
 	config_destroy(conf_arch);
 	free_string_splits(properties);
 }
@@ -204,4 +177,28 @@ void free_conf_job(struct conf_job* conf) {
 	free(conf->path_reduce);
 	free(conf->paths_to_apply_files);
 	free(conf->path_result_file);
+}
+
+//###########################################################################
+int main(void) {
+
+	struct conf_job conf; // estructura que contiene la info del arch de conf
+	levantar_arch_conf_job(&conf);
+	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
+
+	int socketfd_MaRTA = solicitarConexionConMarta(conf);
+
+	struct info_new_job new_job;
+	set_new_job(conf, &new_job);
+
+	enviar_nuevo_job_a_MaRTA(socketfd_MaRTA, new_job);
+
+	esperar_instrucciones_de_MaRTA(socketfd_MaRTA);
+
+	free_conf_job(&conf);
+	free_info_job(&new_job);
+
+	log_destroy(paranoid_log);
+
+	return EXIT_SUCCESS;
 }

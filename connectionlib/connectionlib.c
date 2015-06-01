@@ -5,25 +5,37 @@
  *      Author: utnso
  */
 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
+#include <ifaddrs.h>
+#include <string.h>
+#include <commons/config.h>
 #include "../connectionlib/connectionlib.h"
+
+#define BACKLOG 5
 
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {
 	perror(cause);
 //	quizas debería distinguirse error insalvable de error ignorable
-	getchar();
+//	getchar();
 }
 
 
+//---------------------------------------------------------------------------
 int solicitarConexionCon(char* server_ip,int server_port) {
 	struct sockaddr_in socketaddr_server;
 
 	setSocketAddrStd(&socketaddr_server,server_ip,server_port);
-	return solicitarConexionConServer(&socketaddr_server);
-}
-
-//---------------------------------------------------------------------------
-int solicitarConexionConServer(struct sockaddr_in *direccionDestino) {
 
 	int socketfd_server;
 
@@ -32,13 +44,62 @@ int solicitarConexionConServer(struct sockaddr_in *direccionDestino) {
 		return -1;
 	}
 
-	if (connect(socketfd_server, (struct sockaddr*) direccionDestino,
+	if (connect(socketfd_server, (struct sockaddr*) &socketaddr_server,
 			sizeof(struct sockaddr)) == -1) { // conecta con el servidor
 		mostrar_error(-1, "Error while connect()");
 		return -1;
 	}
 	return socketfd_server;
 }
+
+
+//---------------------------------------------------------------------------
+int escucharConexionesDesde(char* server_ip,int server_port) {
+	struct sockaddr_in socketaddr_server;
+
+	setSocketAddrStd(&socketaddr_server,server_ip,server_port);
+
+	int listener;
+
+	if ((listener = socket(AF_INET, SOCK_STREAM, 0)) == -1) { //Crea un Socket
+		mostrar_error(-1, "Error while socket()");
+		return -1;
+	}
+
+	int yes=1;
+	if (setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) == -1) {
+		mostrar_error(-1, "setsockopt");
+		return -1;
+	}
+
+	if (bind(listener, (struct sockaddr*) &socketaddr_server,sizeof(struct sockaddr)) == -1) { //Asignar puerto de escucha
+		mostrar_error(-1, "Error while bind()");
+		return -1;
+	}
+
+	if (listen(listener, BACKLOG) == -1) { //escuchar por clientes
+		mostrar_error(-1, "Error while listen()");
+		return -1;
+	}
+
+	return listener;
+}
+
+
+//--------------------------------------------------------------------
+int aceptarCliente(int listener,struct sockaddr_in* direccionCliente)
+{
+	int sin_size = sizeof(struct sockaddr_in);
+	int nuevo_socket;
+
+	if ((nuevo_socket = accept(listener, (struct sockaddr*) direccionCliente, (socklen_t*) &sin_size)) == -1) { //Crea un Socket
+		mostrar_error(-1, "Error while accept()");
+		return -1;
+	}
+
+	return nuevo_socket;
+}
+
 
 
 //---------------------------------------------------------------------------
@@ -134,12 +195,58 @@ char* get_IP() { //ojala sirva para algo jaja
 void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port) {
 	address->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	address->sin_port = htons(port); // setea Puerto a conectarme
-	address->sin_addr.s_addr = inet_addr(ip); // Setea Ip a conectarme
+
+	if(strlen(ip)!=0) {
+		address->sin_addr.s_addr = inet_addr(ip); // Setea Ip a conectarme
+	} else {
+		address->sin_addr.s_addr = htonl(INADDR_ANY); // escucha todas las conexiones
+	}
+
 	memset(&(address->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
 }
 
 
 
 //-------------------*********************** Deberian ir en otra lib *******************
+//---------------------------------------------------------------------------
+void free_string_splits(char** strings) {
+	char **aux = strings;
+
+	while (*aux != NULL) {
+		free(*aux);
+		aux++;
+	}
+	free(strings);
+}
+
+//---------------------------------------------------------------------------
+int has_all_properties(int cant_properties, char** properties,
+		t_config* conf_arch) {
+	int i;
+
+	for (i = 0;
+			(i < cant_properties) && (config_has_property(conf_arch, properties[i]));
+			i++)
+		;
+
+	if(i<cant_properties)
+	{
+		for (i = 0; i < cant_properties; i++) {
+			if (!config_has_property(conf_arch, properties[i])) {
+				printf("Error: el archivo de conf no tiene %s\n",
+						properties[i]);
+			}
+		}
+		return 0;
+	}
+	return 1;
+}
 
 
+//-------------------------------------------------------------------------------------
+void leerStdin(char *leido, int maxLargo) {
+	fgets(leido, maxLargo, stdin);
+	if ((strlen(leido) > 0) && (leido[strlen(leido) - 1] == '\n')) {
+		leido[strlen(leido) - 1] = '\0';
+	}
+}

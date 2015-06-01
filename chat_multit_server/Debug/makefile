@@ -35,7 +35,7 @@ chat_multit_server: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) chat_multit_server
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) chat_multit_server
 	-@echo ' '
 
 .PHONY: all clean dependents

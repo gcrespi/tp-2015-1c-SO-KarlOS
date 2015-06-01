@@ -161,7 +161,6 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 
 //Prototipos de la consola
 void free_string_splits(char**);
-void receive_command(char*, int);
 char execute_command(char*);
 void help();
 void lsnode();
@@ -177,10 +176,33 @@ static void info_nodo_destroy(struct info_nodo*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
-char end; //Indicador de que deben terminar todos los hilos
+char cerrar_marta; //Indicador de que deben terminar todos los hilos
 t_list *list_info_nodo; //Lista de nodos que solicitan conectarse al FS
+pthread_mutex_t mutex_end;
+
+
+void terminar_hilos() {
+
+	pthread_mutex_lock(&mutex_end);
+	cerrar_marta = 1;
+	pthread_mutex_unlock(&mutex_end);
+
+}
+
+int programa_terminado() {
+	int endLocal;
+
+	pthread_mutex_lock(&mutex_end);
+	endLocal = cerrar_marta;
+	pthread_mutex_unlock(&mutex_end);
+
+	return endLocal;
+}
+
 
 int main(void) {                                         //TODO aca esta el main
+
+	pthread_mutex_init(&mutex_end,NULL);
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	pthread_t t_listener;
@@ -190,9 +212,13 @@ int main(void) {                                         //TODO aca esta el main
 	puts(CLEAR NORMAL"Console KarlOS\nType 'help' to show the commands");
 	do {
 		printf("> ");
-		receive_command(command, MAX_COMMAND_LENGTH + 1);
-		end = execute_command(command);
-	} while (!end);
+		leerStdin(command, MAX_COMMAND_LENGTH + 1);
+		if(execute_command(command))
+		{
+			terminar_hilos();
+
+		}
+	} while (!programa_terminado());
 
 	pthread_join(t_listener, NULL);
 
@@ -235,7 +261,7 @@ void hilo_listener() {
 	int sin_size = sizeof(struct sockaddr_in);
 
 	int i;
-	while(!end){
+	while(!programa_terminado()){
 		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
 		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
 		for (i = 0; i <= fd_max; i++) {
@@ -322,23 +348,6 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 	direccionDestino->sin_port = htons(conf.puerto_listen); // setea Puerto a conectarme
 	direccionDestino->sin_addr.s_addr = htonl(INADDR_ANY); // escucha todas las conexiones
 	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
-}
-
-//---------------------------------------------------------------------------
-void free_string_splits(char** strings) {
-	char **aux = strings;
-
-	while (*aux != NULL) {
-		free(*aux);
-		aux++;
-	}
-	free(strings);
-}
-
-//---------------------------------------------------------------------------
-void receive_command(char* readed, int max_command_length) {
-	fgets(readed, max_command_length, stdin);
-	readed[strlen(readed) - 1] = '\0';
 }
 
 //---------------------------------------------------------------------------

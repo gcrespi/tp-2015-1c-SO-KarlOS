@@ -26,7 +26,6 @@
 #include <pthread.h>
 #include "../../connectionlib/connectionlib.h"
 
-
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
@@ -40,8 +39,7 @@ enum t_estado_nodo {
 };
 
 //Estructura de carpetas del FS (Se persiste)
-struct t_dir
-{
+struct t_dir {
 	int id_dir;
 	char *nombre;
 	int id_padre;
@@ -85,8 +83,7 @@ struct t_bloque {
 };
 
 //Se persiste, sino perdería toda la info sobre los archivos guardados y sus bloques
-struct t_archivo
-{
+struct t_archivo {
 	//codigo unico del archivo fragmentado
 	int id_archivo;
 
@@ -119,8 +116,8 @@ struct info_nodo {
 };
 
 //Prototipos de la consola
-void free_string_splits (char**);
-void receive_command(char*,int);
+void free_string_splits(char**);
+void receive_command(char*, int);
 char execute_command(char*);
 void help();
 void pwd();
@@ -151,15 +148,14 @@ int dir_id_counter;
 t_list* listaArchivos; //(lista de t_archivo)
 struct t_dir* dir_actual;
 
-
-int main(void) {                                                                  //TODO aca esta el main
+int main(void) {                                         //TODO aca esta el main
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	preparar_fs ();
 	pthread_t t_listener;
-	pthread_create(&t_listener, NULL, (void*)hilo_listener, NULL);
+	pthread_create(&t_listener, NULL, (void*) hilo_listener, NULL);
 
-	char command[MAX_COMMAND_LENGTH+1];
+	char command[MAX_COMMAND_LENGTH + 1];
 	puts(CLEAR NORMAL"Console KarlOS\nType 'help' to show the commands");
 	do {
 		printf("MDFS:~"); print_path_actual(); printf("$ ");
@@ -173,7 +169,7 @@ int main(void) {                                                                
 }
 
 //---------------------------------------------------------------------------
-void hilo_listener(){
+void hilo_listener() {
 	list_info_nodo = list_create();
 
 	fd_set master; // Nuevo set principal
@@ -192,11 +188,12 @@ void hilo_listener(){
 		perror("setsockopt");
 		exit(1);
 	}
-	if (bind(listener,(struct sockaddr*) &sockaddr_listener,sizeof(sockaddr_listener))==-1){
+	if (bind(listener, (struct sockaddr*) &sockaddr_listener,
+			sizeof(sockaddr_listener)) == -1) {
 		perror("Error binding");
 		exit(-1);
 	}
-	if (listen(listener, 100) == -1){
+	if (listen(listener, 100) == -1) {
 		perror("Error listening");
 		exit(-1);
 	}
@@ -216,7 +213,8 @@ void hilo_listener(){
 					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
 					recivir_instrucciones(socketfd_cli);
 					FD_SET(socketfd_cli, &master);
-					if (socketfd_cli > fd_max) fd_max = socketfd_cli;
+					if (socketfd_cli > fd_max)
+						fd_max = socketfd_cli;
 				}
 			}
 		}
@@ -232,27 +230,28 @@ int recivir_instrucciones(int socket){
 	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
 		return -1;
 	}
-	switch(prot){
-		case INFO_NODO:
-			recivir_info_nodo(socket);
-			break;
-		default: return -1;
+	switch (prot) {
+	case INFO_NODO:
+		recivir_info_nodo(socket);
+		break;
+	default:
+		return -1;
 	}
 	return prot;
 }
 //---------------------------------------------------------------------------
 void recivir_info_nodo (int socket){
-struct info_nodo* info_nodo;
-info_nodo = malloc(sizeof(struct info_nodo));
-	if (recivir(socket, &(info_nodo->id)) == -1) { //recive id del nodo
+	struct info_nodo* info_nodo;
+	info_nodo = malloc(sizeof(struct info_nodo));
+	if (recibir(socket, &(info_nodo->id)) == -1) { //recibe id del nodo
 		perror("Error reciving id");
 		exit(-1);
 	}
-	if (recivir(socket, &(info_nodo->cant_bloques)) == -1) { //recive cantidad de bloques del nodo
+	if (recibir(socket, &(info_nodo->cant_bloques)) == -1) { //recive cantidad de bloques del nodo
 		perror("Error reciving cant_bloques");
 		exit(-1);
 	}
-	if (recivir(socket, &(info_nodo->nodo_nuevo)) == -1) { //recive si el nodo es nuevo o no
+	if (recibir(socket, &(info_nodo->nodo_nuevo)) == -1) { //recive si el nodo es nuevo o no
 		perror("Error reciving nodo_nuevo");
 		exit(-1);
 	}
@@ -306,7 +305,7 @@ static void info_nodo_destroy(struct info_nodo* self){
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf(){
+void levantar_arch_conf() {
 	t_config* conf_arch;
 	conf_arch = config_create("fs.cfg");
 	if (config_has_property(conf_arch,"FS_VACIO")){
@@ -377,17 +376,6 @@ void free_dir_nombres(){
 }
 
 //---------------------------------------------------------------------------
-void free_string_splits(char** strings){
-	char **aux=strings;
-
-	while(*aux != NULL){
-		free(*aux);
-		aux++;
-	}
-	free(strings);
-}
-
-//---------------------------------------------------------------------------
 void print_path_actual(){
 	char* path = string_new();
 		char* aux;
@@ -420,19 +408,17 @@ char execute_command(char* command){
 	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","ls","cd","rm","mv","rename","mkdir","rmdir","mvdir",
 													"renamedir","upload","download","md5","blocks","rmblock","cpblock","lsnode","addnode","rmnode",
 													"clear","exit","","","","","","",""};
-
 	int i,salir=0;
 	for(i=0;command[i]==' ';i++);
 	if(command[i]=='\0')
 	{	return 0;}
+	char** subcommands = string_split(command, " ");
+	for (i = 0; (i < MAX_COMMANOS_VALIDOS) && (strcmp(subcommands[0], comandos_validos[i]) != 0); i++);
 
-	char** subcommands = string_split(command," ");
-
-	for(i=0;(i<MAX_COMMANOS_VALIDOS)&&(strcmp(subcommands[0],comandos_validos[i])!=0);i++);
-
-	switch(i)
-	{
-		case  0: help(); break;
+	switch (i) {
+	case 0:
+		help();
+		break;
 //		case  1: format(); break;
 		case  2: pwd(); break;
 		case  3: ls(); break;
@@ -461,9 +447,9 @@ char execute_command(char* command){
 		case 21: printf(CLEAR); break;
 		case 22: salir=1; break;
 
-		default:
-			printf("%s: no es un comando valido\n",subcommands[0]);
-			break;
+	default:
+		printf("%s: no es un comando valido\n", subcommands[0]);
+		break;
 	}
 
 	free_string_splits(subcommands);
@@ -530,16 +516,16 @@ void mkdir(char* dir_name){
 }
 
 //---------------------------------------------------------------------------
-void lsnode(){
+void lsnode() {
 	int lsize = list_size(list_info_nodo);
-	if(lsize==0){
+	if (lsize == 0) {
 		puts("No hay nodos disponibles para agregar :(");
 	} else {
 		puts("Nodos disponibles para agregar:");
 	}
 	struct info_nodo* ptr_inodo;
 	int i;
-	for(i=0; i<lsize; i++){
+	for (i = 0; i < lsize; i++) {
 		ptr_inodo = list_get(list_info_nodo, i);
 		printf(" ID: %d\n",ptr_inodo->id);
 		printf("  *Cantidad de bloques: %d\n",ptr_inodo->cant_bloques);

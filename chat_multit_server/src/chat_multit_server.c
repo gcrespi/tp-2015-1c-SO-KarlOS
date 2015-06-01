@@ -87,12 +87,12 @@ int abrirConexionConClientes(struct sockaddr_in* direccionOrigen) {
 }
 
 //--------------------------------------------------------------------
-int aceptar_clientes(int listener,struct sockaddr_in* direccionOrigen)
+int aceptar_clientes(int listener,struct sockaddr_in* direccionCliente)
 {
 	int sin_size = sizeof(struct sockaddr_in);
 	int nuevo_socket;
 
-	if ((nuevo_socket = accept(listener, (struct sockaddr*) direccionOrigen, (socklen_t*) &sin_size)) == -1) { //Crea un Socket
+	if ((nuevo_socket = accept(listener, (struct sockaddr*) direccionCliente, (socklen_t*) &sin_size)) == -1) { //Crea un Socket
 		perror("Error while accept()");
 		exit(-1);
 	}

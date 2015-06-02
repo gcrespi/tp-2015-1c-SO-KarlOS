@@ -40,9 +40,11 @@ enum t_estado_nodo {
 
 //Estructura de carpetas del FS (Se persiste)
 struct t_dir {
+	struct t_dir* parent_dir;
 	int id_dir;
-	char *nombre;
-	int id_padre;
+	char* nombre;
+	t_list* list_dirs;
+	t_list* list_archs;
 };
 
 //no se persisten: estado, aceptado
@@ -116,7 +118,6 @@ struct info_nodo {
 };
 
 //Prototipos de la consola
-void free_string_splits(char**);
 void receive_command(char*, int);
 char execute_command(char*);
 void help();
@@ -133,19 +134,24 @@ void recivir_info_nodo (int);
 int recivir_instrucciones(int);
 void setSocketAddr(struct sockaddr_in*);
 void hilo_listener();
-static void info_nodo_destroy(struct info_nodo*);
 void preparar_fs (); //Configura lo inicial del fs o levanta la informacion persistida.
 void set_root();
+void info_nodo_destroy(struct info_nodo*);
+void dir_destroy(struct t_dir*);
+void arch_destroy(struct t_archivo*);
+void bloque_destroy(struct t_bloque*);
+void nodo_destroy(struct t_nodo*);
 void print_path_actual();
+void get_info_from_path(char*, char**, struct t_dir**);
+struct t_dir* get_dir_from_path(char*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
 char end; //Indicador de que deben terminar todos los hilos
 t_list* list_info_nodo; //Lista de nodos que solicitan conectarse al FS
-t_list* listaNodos; //(lista de t_nodo)
-t_list* listaDir; //(lista de t_dir)
+t_list* listaNodos; //Lista de nodos
 int dir_id_counter;
-t_list* listaArchivos; //(lista de t_archivo)
+struct t_dir* root;
 struct t_dir* dir_actual;
 
 int main(void) {                                         //TODO aca esta el main
@@ -163,6 +169,7 @@ int main(void) {                                         //TODO aca esta el main
 		end = execute_command(command);
 	} while(!end);
 
+	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	pthread_join(t_listener, NULL);
 
 	return EXIT_SUCCESS;
@@ -300,11 +307,6 @@ int estaDisponibleElArchivo(struct t_archivo archivo) {
 //int atenderSolicitudesDeMarta();
 
 //---------------------------------------------------------------------------
-static void info_nodo_destroy(struct info_nodo* self){
-	free(self);
-}
-
-//---------------------------------------------------------------------------
 void levantar_arch_conf() {
 	t_config* conf_arch;
 	conf_arch = config_create("fs.cfg");
@@ -331,8 +333,6 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 
 //---------------------------------------------------------------------------
 void preparar_fs () {
-	listaArchivos = list_create();
-	listaDir = list_create();
 	listaNodos = list_create();
 	if(conf.fs_vacio){
 		set_root();
@@ -347,52 +347,132 @@ void set_root(){
 	dir_root = malloc(sizeof(struct t_dir));
 		dir_root->id_dir = 0;
 		dir_root->nombre = string_duplicate("root");
-		dir_root->id_padre = -1;
-	list_add(listaDir, dir_root);
-	dir_id_counter = 0;
-	dir_id_counter++;
+		dir_root->parent_dir = NULL;
+		dir_root->list_dirs = list_create();
+		dir_root->list_archs = list_create();
+	dir_id_counter = 1;
+	root = dir_root;
 	dir_actual = dir_root;
  }
-
+							  //FINDERS
 //---------------------------------------------------------------------------
-struct t_dir* find_dir_with_id(int id){
+struct t_dir* find_dir_with_id(int id, t_list* list){
 	int _eq_id(struct t_dir* direc){
 		return id == direc->id_dir;
 	}
-	return list_find(listaDir, (void*) _eq_id);
+	return list_find(list, (void*) _eq_id);
 }
 
 //---------------------------------------------------------------------------
-struct t_dir* find_dir_with_name(char* name){
+struct t_dir* find_dir_with_name(char* name, t_list* list){
 	int _eq_name(struct t_dir* direc){
 		return string_equals_ignore_case(direc->nombre,name);
 	}
-	return list_find(listaDir, (void*) _eq_name);
+	return list_find(list, (void*) _eq_name);
 }
 
 //---------------------------------------------------------------------------
-void free_dir_nombres(){
-	//ToDo liberar los nombres de todos los archivos;
+int any_dir_with_name(char* name, t_list* list){
+	int _eq_name(struct t_dir* direc){
+		return string_equals_ignore_case(direc->nombre,name);
+	}
+	return list_any_satisfy(list, (void*) _eq_name);
 }
 
+							 //DESTROYERS
+//---------------------------------------------------------------------------
+void info_nodo_destroy(struct info_nodo* self){
+	free(self);
+}
+
+//---------------------------------------------------------------------------
+void dir_destroy(struct t_dir* self){
+	free(self->nombre);
+	free(self);
+}
+
+//---------------------------------------------------------------------------
+void bloque_destroy(struct t_bloque* self){
+	free(self);
+}
+
+//---------------------------------------------------------------------------
+void arch_destroy(struct t_archivo* self){
+	list_destroy_and_destroy_elements(self->bloques, (void*) bloque_destroy);
+	free(self->nombre);
+	free(self);
+}
+
+//---------------------------------------------------------------------------
+void nodo_destroy(struct t_nodo* self){
+	bitarray_destroy(&self->bloquesLlenos);
+	free(self);
+}
+
+						//CONSOLA Y COMANDOS
 //---------------------------------------------------------------------------
 void print_path_actual(){
 	char* path = string_new();
-		char* aux;
-		int pid;
-		struct t_dir* direc = dir_actual;
-		do {
-			aux = string_new();
-			string_append(&aux,"/");
-			string_append(&aux,direc->nombre);
-			string_append(&aux,path);
-			//free(path);
-			path = string_duplicate(aux);
-			free(aux);
-			pid = direc->id_padre;
-			if(pid!=-1) direc = find_dir_with_id(pid);
-		} while(pid!=-1);
-		printf("%s",path);
+	char* aux;
+	struct t_dir* dir = dir_actual;
+	do {
+		aux = string_new();
+		string_append(&aux,"/");
+		string_append(&aux,dir->nombre);
+		string_append(&aux,path);
+		free(path);
+		path = string_duplicate(aux);
+		free(aux);
+		dir = dir->parent_dir;
+	} while(dir!=NULL);
+	printf("%s",path);
+	free(path);
+}
+
+//---------------------------------------------------------------------------
+struct t_dir* get_dir_from_path(char* path){
+	char* dir_name;
+	struct t_dir *dir;
+	get_info_from_path(path, &dir_name, &dir);
+	if(string_equals_ignore_case(dir_name,"..")) {
+		if(dir!=root) dir = dir->parent_dir;
+	}  else if (any_dir_with_name(dir_name, dir->list_dirs)) {
+		dir = find_dir_with_name(dir_name, dir->list_dirs);
+	} else {
+		return NULL;
+	}
+	free(dir_name);
+	return dir;
+}
+
+//---------------------------------------------------------------------------
+int string_split_size(char** matriz){ //Todo <- esto esta bueno para agregarlo a la lib..
+	int i;
+	for (i=0;matriz[i]!=NULL;i++);
+	return i;
+}
+
+//---------------------------------------------------------------------------
+void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //ACA ESTA LA PAPA ;)
+	char** sub_dirs = string_split(path,"/");
+	int last_index = string_split_size(sub_dirs)-1;
+	*name = string_duplicate(sub_dirs[last_index]);
+	*parent_dir = dir_actual;
+
+	t_list* list_dirs;
+	int i;
+	for(i=0;i<last_index;i++){
+		list_dirs = (*parent_dir)->list_dirs;
+		if(string_equals_ignore_case(sub_dirs[i],"..") ) {
+			*parent_dir = (*parent_dir)->parent_dir;
+		}  else if (any_dir_with_name(sub_dirs[i], list_dirs)) {
+			*parent_dir = find_dir_with_name(sub_dirs[i], list_dirs);
+		} else {
+			printf("%s: el directorio no existe\n",sub_dirs[i]);
+		}
+	}
+
+	free_string_splits(sub_dirs);
 }
 
 //---------------------------------------------------------------------------
@@ -490,29 +570,56 @@ void pwd(){
 
 //---------------------------------------------------------------------------
 void ls(){
-	/*int pid = dir_actual->id_dir;
-	void _print_if_pid(struct t_)
-	list_iterate()*/
+	int empty = 1;
+	void _print_dir(struct t_dir* dir){
+		printf(BOLD"%s  "NORMAL,dir->nombre);
+		empty = 0;
+	}
+	list_iterate(dir_actual->list_dirs, (void*) _print_dir);
+	void _print_arch(struct t_archivo* arch){
+		printf("%s  ",arch->nombre);
+		empty = 0;
+	}
+	list_iterate(dir_actual->list_archs, (void*) _print_arch);
+	if (!empty) puts("");
 }
 
 //---------------------------------------------------------------------------
-void cd(char* dir_name){
-	if(string_equals_ignore_case(dir_name,"..")){
-		dir_actual = find_dir_with_id(dir_actual->id_padre);
-	} else { //ToDo contemplar errores, poner condicion en el caso de nombre invalido
-		dir_actual = find_dir_with_name(dir_name);
+void cd(char* dir_path){
+	struct t_dir* dir_aux;
+	if(dir_path==NULL){
+		dir_actual = root;
+	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
+		dir_actual = dir_aux;
+	} else {
+		puts("error: el directorio no existe");
 	}
 }
 
 //---------------------------------------------------------------------------
-void mkdir(char* dir_name){
-	struct t_dir* nuevo_dir;
-	nuevo_dir = malloc(sizeof(struct t_dir));
-		nuevo_dir->id_dir = dir_id_counter;
-		nuevo_dir->nombre = string_duplicate(dir_name);
-		nuevo_dir->id_padre = dir_actual->id_dir;
-	dir_id_counter++;
-	list_add(listaDir, nuevo_dir);
+void mkdir(char* dir_path){
+	if (dir_path!=NULL) {
+		char* dir_name;
+		struct t_dir* parent_dir;
+		get_info_from_path(dir_path, &dir_name, &parent_dir);
+		struct t_dir* nuevo_dir;
+		nuevo_dir = malloc(sizeof(struct t_dir));
+			nuevo_dir->id_dir = dir_id_counter;
+			nuevo_dir->nombre = string_duplicate(dir_name);
+			nuevo_dir->parent_dir = parent_dir;
+			nuevo_dir->list_dirs = list_create();
+			nuevo_dir->list_archs = list_create();
+		dir_id_counter++;
+		free(dir_name);
+		list_add(parent_dir->list_dirs, nuevo_dir);
+
+		int _orden_alfabetico(struct t_dir* menor, struct t_dir* mayor){
+			return strcmp(menor->nombre,mayor->nombre)==-1;
+		}
+		list_sort(parent_dir->list_dirs, (void*) _orden_alfabetico);
+	} else {
+		puts("mkdir: falta un operando");
+	}
 }
 
 //---------------------------------------------------------------------------

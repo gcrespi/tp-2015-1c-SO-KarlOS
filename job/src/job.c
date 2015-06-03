@@ -25,7 +25,7 @@
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
 #include "../../connectionlib/connectionlib.h"
 
-struct conf_job {
+typedef struct {
 	char* ip_MaRTA;
 	int port_MaRTA;
 
@@ -35,25 +35,25 @@ struct conf_job {
 	int combiner;
 	char* paths_to_apply_files;
 	char* path_result_file;
-};
+}conf_job;
 
-struct info_new_job {
+typedef struct {
 	uint32_t combiner;
 	char* paths_to_apply_files;
 	char* path_result_file;
-};
+}info_new_job;
 
-void levantar_arch_conf_job(struct conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
-void free_conf_job(struct conf_job* conf);
-int enviar_nuevo_job_a_MaRTA(int socket, struct info_new_job info_job);
+void levantar_arch_conf_job(conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
+void free_conf_job(conf_job* conf);
+int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job);
 void esperar_instrucciones_de_MaRTA(int socket);
-void free_info_job(struct info_new_job* info);
-void set_new_job(struct conf_job conf, struct info_new_job* new_job);
+void free_info_job(info_new_job* info);
+void set_new_job(conf_job conf, info_new_job* new_job);
 
 t_log* paranoid_log;
 
 //-------------------------------------------------------------------------------------
-int solicitarConexionConMarta(struct conf_job conf) {
+int solicitarConexionConMarta(conf_job conf) {
 
 	log_debug(paranoid_log, "Solicitando conexión con MaRTA...");
 	int socketfd_MaRTA = solicitarConexionCon(conf.ip_MaRTA, conf.port_MaRTA);
@@ -70,7 +70,7 @@ int solicitarConexionConMarta(struct conf_job conf) {
 
 
 //---------------------------------------------------------------------------
-void set_new_job(struct conf_job conf, struct info_new_job* new_job) {
+void set_new_job(conf_job conf, info_new_job* new_job) {
 	new_job->combiner = conf.combiner;
 	new_job->path_result_file = strdup(conf.path_result_file);
 	new_job->paths_to_apply_files = strdup(conf.paths_to_apply_files);
@@ -103,6 +103,11 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			finished = 1;
 			break;
 
+		case ABORTED_JOB:
+			log_error(paranoid_log,"Se Produjo un Error en MaRTA y se Abortó el Job");
+			error = 1;
+			break;
+
 		case DISCONNECTED:
 			log_error(paranoid_log,"MaRTA se desconectó de forma inesperada");
 			error = 2;
@@ -114,7 +119,7 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			break;
 
 		default:
-			//se produjo un error inesperado
+			log_error(paranoid_log,"Instruccion de MaRTA Desconocida");
 			error = 1;
 			break;
 		}
@@ -122,17 +127,17 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 }
 
 //---------------------------------------------------------------------------
-int enviar_nuevo_job_a_MaRTA(int socket, struct info_new_job info_job) {
+int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job) {
 
 	int result = 0;
 
 	log_debug(paranoid_log, "Enviando Target del Job");
 
-	result = (result != 1) ? enviar_protocolo(socket, NUEVO_JOB) : result;
+	result = (result != -1) ? enviar_protocolo(socket, NUEVO_JOB) : result;
 
-	result = (result != 1) ? enviar_int(socket, info_job.combiner) : result;
-	result = (result != 1) ? enviar_string(socket, info_job.paths_to_apply_files) : result;
-	result = (result != 1) ? enviar_string(socket, info_job.path_result_file) : result;
+	result = (result != -1) ? enviar_int(socket, info_job.combiner) : result;
+	result = (result != -1) ? enviar_string(socket, info_job.paths_to_apply_files) : result;
+	result = (result != -1) ? enviar_string(socket, info_job.path_result_file) : result;
 
 	if (result == -1) {
 		log_error(paranoid_log, "No se pudo enviar Target del Job");
@@ -143,7 +148,7 @@ int enviar_nuevo_job_a_MaRTA(int socket, struct info_new_job info_job) {
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf_job(struct conf_job* conf) {
+void levantar_arch_conf_job(conf_job* conf) {
 
 	char** properties = string_split("IP_MARTA,PUERTO_MARTA,MAPPER,REDUCE,COMBINER,ARCHIVOS,RESULTADO", ",");
 	t_config* conf_arch = config_create("job.cfg");
@@ -165,13 +170,13 @@ void levantar_arch_conf_job(struct conf_job* conf) {
 }
 
 //---------------------------------------------------------------------------
-void free_info_job(struct info_new_job* info) {
+void free_info_job(info_new_job* info) {
 	free(info->path_result_file);
 	free(info->paths_to_apply_files);
 }
 
 //---------------------------------------------------------------------------
-void free_conf_job(struct conf_job* conf) {
+void free_conf_job(conf_job* conf) {
 	free(conf->ip_MaRTA);
 	free(conf->path_map);
 	free(conf->path_reduce);
@@ -182,13 +187,13 @@ void free_conf_job(struct conf_job* conf) {
 //###########################################################################
 int main(void) {
 
-	struct conf_job conf; // estructura que contiene la info del arch de conf
+	conf_job conf; // estructura que contiene la info del arch de conf
 	levantar_arch_conf_job(&conf);
 	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 
 	int socketfd_MaRTA = solicitarConexionConMarta(conf);
 
-	struct info_new_job new_job;
+	info_new_job new_job;
 	set_new_job(conf, &new_job);
 
 	enviar_nuevo_job_a_MaRTA(socketfd_MaRTA, new_job);

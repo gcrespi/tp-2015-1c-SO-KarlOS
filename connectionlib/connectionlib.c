@@ -105,13 +105,14 @@ int aceptarCliente(int listener,struct sockaddr_in* direccionCliente)
 //---------------------------------------------------------------------------
 int enviar_protocolo(int socket, uint32_t protocolo) {
 	uint32_t prot = protocolo;
+	int result = 0;
 
-	if ((send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
+	if ((result = send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
 		mostrar_error(-1, "Error sending");
 		return -1;
 	}
 
-	return 0;
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ int enviar_int(int socket, uint32_t numero) {
 
 //---------------------------------------------------------------------------
 int enviar_string(int socket, char *string) {
-	return enviar(socket,string,strlen(string));
+	return enviar(socket,string,strlen(string)+1);
 }
 
 //---------------------------------------------------------------------------
@@ -167,28 +168,90 @@ int enviar(int socket, void *buffer, uint32_t size_buffer) {
 	return 0;
 }
 
+////---------------------------------------------------------------------------
+//int recibir(int socket, void *buffer) {
+//
+//	uint32_t size_received = 0;
+//	uint32_t receiving;
+//
+//	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
+//	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+//		mostrar_error(-1, "Error reciving");
+//		return -1;
+//	}
+//
+//	if(receiving == 0)
+//	{	return 0;}
+//
+//	//TODO TESTME
+//	while (size_received < size_buffer) {
+//		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
+//			mostrar_error(-1, "Error receiving");
+//			return -1;
+//		}
+//
+//		if(receiving == 0)
+//		{	return 0;}
+//
+//		size_received += receiving;
+//	}
+//	return size_received;
+//}
+
 //---------------------------------------------------------------------------
 int recibir(int socket, void *buffer) {
 
+	void* aux_buffer;
+
+	int result = recibir_dinamic_buffer(socket,&aux_buffer);
+
+	//TODO TESTME
+
+	if(result>0) {
+		memcpy(buffer,aux_buffer,result);
+	}
+
+	free(aux_buffer);
+	return result;
+}
+
+
+
+//---------------------------------------------------------------------------
+int recibir_dinamic_buffer(int socket, void** buffer) {
+
+	uint32_t size_received = 0;
+	uint32_t receiving;
+
 	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-	if (recv(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
+
+	*buffer = malloc(sizeof(char)); //para que se tome en cuenta de que cada vez que esta funcion es llamada hace un malloc
+
+	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
 		mostrar_error(-1, "Error reciving");
 		return -1;
 	}
 
-	//TODO TESTME
-	uint32_t size_received = 0;
-	while (size_received < size_buffer) {
-		uint32_t receiving;
+	if(receiving == 0)
+	{	return 0;}
 
-		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
+	free(*buffer);
+	*buffer = malloc(size_buffer);
+
+	//TODO TESTME
+	while (size_received < size_buffer) {
+
+		if ((receiving = recv(socket, ((*buffer) + size_received), (size_buffer - size_received), 0)) == -1) {
 			mostrar_error(-1, "Error receiving");
 			return -1;
 		}
 
+		if(receiving == 0)
+		{	return 0;}
+
 		size_received += receiving;
 	}
-	return 0;
+	return size_received;
 }
 
 //---------------------------------------------------------------------------
@@ -222,6 +285,18 @@ void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port) {
 	}
 
 	memset(&(address->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
+}
+
+//---------------------------------------------------------------------------
+void getFromSocketAddrStd(struct sockaddr_in address, char** ip, int* port) {
+
+	*port = ntohs(address.sin_port);
+
+	if(htonl(INADDR_ANY) != address.sin_addr.s_addr) {
+		*ip = strdup(inet_ntoa(address.sin_addr)); // Ip especificada
+	} else {
+		*ip = strdup("ANY IP"); // Cualquier Ip
+	}
 }
 
 

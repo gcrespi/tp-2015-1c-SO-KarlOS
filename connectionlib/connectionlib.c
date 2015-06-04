@@ -344,3 +344,104 @@ void leerStdin(char *leido, int maxLargo) {
 		leido[strlen(leido) - 1] = '\0';
 	}
 }
+
+
+//---------------------------------------------------------------------------
+t_kbitarray* kbitarray_create(size_t cant_bits)
+{
+	t_kbitarray* self;
+	char* bitarray;
+
+	self = malloc(sizeof(t_kbitarray));
+
+	self->size_in_bits = cant_bits;
+
+	size_t cant_bytes= cant_bits / CHAR_BIT;
+	if(cant_bits % CHAR_BIT != 0) {
+		cant_bytes++;
+	}
+
+	bitarray = malloc(cant_bytes*sizeof(char));
+
+	self->bitarray_commons = bitarray_create(bitarray,cant_bytes);
+
+	return self;
+}
+
+//---------------------------------------------------------------------------
+t_kbitarray* kbitarray_create_and_clean_all(size_t cant_bits)
+{
+	t_kbitarray* self = kbitarray_create(cant_bits);
+	kbitarray_clean_all(self);
+
+	return self;
+}
+
+//---------------------------------------------------------------------------
+void kbitarray_clean_all(t_kbitarray* self) {
+	int i;
+
+	for(i=0; i<self->bitarray_commons->size; i++) {
+		self->bitarray_commons->bitarray[i]=0;
+	}
+}
+
+//---------------------------------------------------------------------------
+void kbitarray_set_all(t_kbitarray* self) {
+	int i;
+
+	for(i=0; i<self->bitarray_commons->size; i++) {
+		self->bitarray_commons->bitarray[i]=CHAR_MIN; //XXX TESTME
+	}
+}
+
+//---------------------------------------------------------------------------
+bool kbitarray_test_bit(t_kbitarray* self, off_t bit_index) {
+	return bitarray_test_bit(self->bitarray_commons,bit_index);
+}
+
+//---------------------------------------------------------------------------
+size_t kbitarray_amount_bits_set(t_kbitarray* self) {
+	size_t amount = 0;
+	off_t bit_index;
+
+	for (bit_index = 0; bit_index < self->size_in_bits; bit_index++) {
+		if(bitarray_test_bit(self->bitarray_commons, bit_index)) {
+			amount++;
+		}
+	}
+
+	return amount;
+}
+
+//---------------------------------------------------------------------------
+size_t kbitarray_amount_bits_clear(t_kbitarray* self) {
+	return self->size_in_bits - kbitarray_amount_bits_set(self);
+}
+
+//---------------------------------------------------------------------------
+void kbitarray_set_bit(t_kbitarray* self, off_t bit_index) {
+	bitarray_set_bit(self->bitarray_commons,bit_index);
+}
+
+//---------------------------------------------------------------------------
+void kbitarray_clean_bit(t_kbitarray* self, off_t bit_index) {
+	bitarray_clean_bit(self->bitarray_commons,bit_index);
+}
+
+//---------------------------------------------------------------------------
+size_t kbitarray_get_size_in_bits(t_kbitarray* self) {
+	return self->size_in_bits;
+}
+
+//---------------------------------------------------------------------------
+size_t kbitarray_get_size_in_bytes(t_kbitarray* self) {
+	return self->bitarray_commons->size;
+}
+
+//---------------------------------------------------------------------------
+void kbitarray_destroy(t_kbitarray* self) {
+	free(self->bitarray_commons->bitarray);
+	bitarray_destroy(self->bitarray_commons);
+	free(self);
+}

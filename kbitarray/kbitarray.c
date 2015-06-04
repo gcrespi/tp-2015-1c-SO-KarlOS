@@ -31,7 +31,7 @@ t_kbitarray *kbitarray_create(size_t cant_bits) {
 	self->size = cant_bits;
 	self->char_count = cant_bits / CHAR_BIT;
 
-	if (self->char_count % CHAR_BIT != 0) {
+	if (cant_bits % CHAR_BIT != 0) {
 		(self->char_count)++;
 	}
 

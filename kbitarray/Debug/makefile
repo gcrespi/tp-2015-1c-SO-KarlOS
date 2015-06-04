@@ -22,19 +22,19 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: libconnectionlib.a
+all: libkbitarray.a
 
 # Tool invocations
-libconnectionlib.a: $(OBJS) $(USER_OBJS)
+libkbitarray.a: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC Archiver'
-	ar -r  "libconnectionlib.a" $(OBJS) $(USER_OBJS) $(LIBS)
+	ar -r  "libkbitarray.a" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(ARCHIVES)$(OBJS)$(C_DEPS) libconnectionlib.a
+	-$(RM) $(ARCHIVES)$(OBJS)$(C_DEPS) libkbitarray.a
 	-@echo ' '
 
 .PHONY: all clean dependents

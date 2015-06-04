@@ -5,7 +5,6 @@
  *      Author: utnso
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,12 +29,11 @@ void mostrar_error(int number, char* cause) {
 //	getchar();
 }
 
-
 //---------------------------------------------------------------------------
-int solicitarConexionCon(char* server_ip,int server_port) {
+int solicitarConexionCon(char* server_ip, int server_port) {
 	struct sockaddr_in socketaddr_server;
 
-	setSocketAddrStd(&socketaddr_server,server_ip,server_port);
+	setSocketAddrStd(&socketaddr_server, server_ip, server_port);
 
 	int socketfd_server;
 
@@ -44,20 +42,18 @@ int solicitarConexionCon(char* server_ip,int server_port) {
 		return -1;
 	}
 
-	if (connect(socketfd_server, (struct sockaddr*) &socketaddr_server,
-			sizeof(struct sockaddr)) == -1) { // conecta con el servidor
+	if (connect(socketfd_server, (struct sockaddr*) &socketaddr_server, sizeof(struct sockaddr)) == -1) { // conecta con el servidor
 		mostrar_error(-1, "Error while connect()");
 		return -1;
 	}
 	return socketfd_server;
 }
 
-
 //---------------------------------------------------------------------------
-int escucharConexionesDesde(char* server_ip,int server_port) {
+int escucharConexionesDesde(char* server_ip, int server_port) {
 	struct sockaddr_in socketaddr_server;
 
-	setSocketAddrStd(&socketaddr_server,server_ip,server_port);
+	setSocketAddrStd(&socketaddr_server, server_ip, server_port);
 
 	int listener;
 
@@ -66,13 +62,13 @@ int escucharConexionesDesde(char* server_ip,int server_port) {
 		return -1;
 	}
 
-	int yes=1;
-	if (setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) == -1) {
+	int yes = 1;
+	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
 		mostrar_error(-1, "setsockopt");
 		return -1;
 	}
 
-	if (bind(listener, (struct sockaddr*) &socketaddr_server,sizeof(struct sockaddr)) == -1) { //Asignar puerto de escucha
+	if (bind(listener, (struct sockaddr*) &socketaddr_server, sizeof(struct sockaddr)) == -1) { //Asignar puerto de escucha
 		mostrar_error(-1, "Error while bind()");
 		return -1;
 	}
@@ -85,10 +81,8 @@ int escucharConexionesDesde(char* server_ip,int server_port) {
 	return listener;
 }
 
-
 //--------------------------------------------------------------------
-int aceptarCliente(int listener,struct sockaddr_in* direccionCliente)
-{
+int aceptarCliente(int listener, struct sockaddr_in* direccionCliente) {
 	int sin_size = sizeof(struct sockaddr_in);
 	int nuevo_socket;
 
@@ -99,8 +93,6 @@ int aceptarCliente(int listener,struct sockaddr_in* direccionCliente)
 
 	return nuevo_socket;
 }
-
-
 
 //---------------------------------------------------------------------------
 int enviar_protocolo(int socket, uint32_t protocolo) {
@@ -136,12 +128,12 @@ uint32_t recibir_protocolo(int socket) {
 //---------------------------------------------------------------------------
 int enviar_int(int socket, uint32_t numero) {
 	uint32_t aux_numero = numero;
-	return enviar(socket,&aux_numero,sizeof(uint32_t));
+	return enviar(socket, &aux_numero, sizeof(uint32_t));
 }
 
 //---------------------------------------------------------------------------
 int enviar_string(int socket, char *string) {
-	return enviar(socket,string,strlen(string)+1);
+	return enviar(socket, string, strlen(string) + 1);
 }
 
 //---------------------------------------------------------------------------
@@ -203,19 +195,17 @@ int recibir(int socket, void *buffer) {
 
 	void* aux_buffer;
 
-	int result = recibir_dinamic_buffer(socket,&aux_buffer);
+	int result = recibir_dinamic_buffer(socket, &aux_buffer);
 
 	//TODO TESTME
 
-	if(result>0) {
-		memcpy(buffer,aux_buffer,result);
+	if (result > 0) {
+		memcpy(buffer, aux_buffer, result);
 	}
 
 	free(aux_buffer);
 	return result;
 }
-
-
 
 //---------------------------------------------------------------------------
 int recibir_dinamic_buffer(int socket, void** buffer) {
@@ -232,8 +222,9 @@ int recibir_dinamic_buffer(int socket, void** buffer) {
 		return -1;
 	}
 
-	if(receiving == 0)
-	{	return 0;}
+	if (receiving == 0) {
+		return 0;
+	}
 
 	free(*buffer);
 	*buffer = malloc(size_buffer);
@@ -246,8 +237,9 @@ int recibir_dinamic_buffer(int socket, void** buffer) {
 			return -1;
 		}
 
-		if(receiving == 0)
-		{	return 0;}
+		if (receiving == 0) {
+			return 0;
+		}
 
 		size_received += receiving;
 	}
@@ -262,8 +254,7 @@ char* get_IP() { //ojala sirva para algo jaja
 
 	getifaddrs(&interface_addr);
 	while (interface_addr) {
-		if (interface_addr->ifa_addr->sa_family == AF_INET
-				&& strcmp(interface_addr->ifa_name, "eth0") == 0) {
+		if (interface_addr->ifa_addr->sa_family == AF_INET && strcmp(interface_addr->ifa_name, "eth0") == 0) {
 			sock_addr = (struct sockaddr_in*) interface_addr->ifa_addr;
 			addr = inet_ntoa(sock_addr->sin_addr);
 		}
@@ -278,7 +269,7 @@ void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port) {
 	address->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	address->sin_port = htons(port); // setea Puerto a conectarme
 
-	if(strlen(ip)!=0) {
+	if (strlen(ip) != 0) {
 		address->sin_addr.s_addr = inet_addr(ip); // Setea Ip a conectarme
 	} else {
 		address->sin_addr.s_addr = htonl(INADDR_ANY); // escucha todas las conexiones
@@ -292,14 +283,12 @@ void getFromSocketAddrStd(struct sockaddr_in address, char** ip, int* port) {
 
 	*port = ntohs(address.sin_port);
 
-	if(htonl(INADDR_ANY) != address.sin_addr.s_addr) {
+	if (htonl(INADDR_ANY) != address.sin_addr.s_addr) {
 		*ip = strdup(inet_ntoa(address.sin_addr)); // Ip especificada
 	} else {
 		*ip = strdup("ANY IP"); // Cualquier Ip
 	}
 }
-
-
 
 //-------------------*********************** Deberian ir en otra lib *******************
 //---------------------------------------------------------------------------
@@ -314,21 +303,16 @@ void free_string_splits(char** strings) {
 }
 
 //---------------------------------------------------------------------------
-int has_all_properties(int cant_properties, char** properties,
-		t_config* conf_arch) {
+int has_all_properties(int cant_properties, char** properties, t_config* conf_arch) {
 	int i;
 
-	for (i = 0;
-			(i < cant_properties) && (config_has_property(conf_arch, properties[i]));
-			i++)
+	for (i = 0; (i < cant_properties) && (config_has_property(conf_arch, properties[i])); i++)
 		;
 
-	if(i<cant_properties)
-	{
+	if (i < cant_properties) {
 		for (i = 0; i < cant_properties; i++) {
 			if (!config_has_property(conf_arch, properties[i])) {
-				printf("Error: el archivo de conf no tiene %s\n",
-						properties[i]);
+				printf("Error: el archivo de conf no tiene %s\n", properties[i]);
 			}
 		}
 		return 0;
@@ -336,112 +320,10 @@ int has_all_properties(int cant_properties, char** properties,
 	return 1;
 }
 
-
 //-------------------------------------------------------------------------------------
 void leerStdin(char *leido, int maxLargo) {
 	fgets(leido, maxLargo, stdin);
 	if ((strlen(leido) > 0) && (leido[strlen(leido) - 1] == '\n')) {
 		leido[strlen(leido) - 1] = '\0';
 	}
-}
-
-
-//---------------------------------------------------------------------------
-t_kbitarray* kbitarray_create(size_t cant_bits)
-{
-	t_kbitarray* self;
-	char* bitarray;
-
-	self = malloc(sizeof(t_kbitarray));
-
-	self->size_in_bits = cant_bits;
-
-	size_t cant_bytes= cant_bits / CHAR_BIT;
-	if(cant_bits % CHAR_BIT != 0) {
-		cant_bytes++;
-	}
-
-	bitarray = malloc(cant_bytes*sizeof(char));
-
-	self->bitarray_commons = bitarray_create(bitarray,cant_bytes);
-
-	return self;
-}
-
-//---------------------------------------------------------------------------
-t_kbitarray* kbitarray_create_and_clean_all(size_t cant_bits)
-{
-	t_kbitarray* self = kbitarray_create(cant_bits);
-	kbitarray_clean_all(self);
-
-	return self;
-}
-
-//---------------------------------------------------------------------------
-void kbitarray_clean_all(t_kbitarray* self) {
-	int i;
-
-	for(i=0; i<self->bitarray_commons->size; i++) {
-		self->bitarray_commons->bitarray[i]=0;
-	}
-}
-
-//---------------------------------------------------------------------------
-void kbitarray_set_all(t_kbitarray* self) {
-	int i;
-
-	for(i=0; i<self->bitarray_commons->size; i++) {
-		self->bitarray_commons->bitarray[i]=CHAR_MIN; //XXX TESTME
-	}
-}
-
-//---------------------------------------------------------------------------
-bool kbitarray_test_bit(t_kbitarray* self, off_t bit_index) {
-	return bitarray_test_bit(self->bitarray_commons,bit_index);
-}
-
-//---------------------------------------------------------------------------
-size_t kbitarray_amount_bits_set(t_kbitarray* self) {
-	size_t amount = 0;
-	off_t bit_index;
-
-	for (bit_index = 0; bit_index < self->size_in_bits; bit_index++) {
-		if(bitarray_test_bit(self->bitarray_commons, bit_index)) {
-			amount++;
-		}
-	}
-
-	return amount;
-}
-
-//---------------------------------------------------------------------------
-size_t kbitarray_amount_bits_clear(t_kbitarray* self) {
-	return self->size_in_bits - kbitarray_amount_bits_set(self);
-}
-
-//---------------------------------------------------------------------------
-void kbitarray_set_bit(t_kbitarray* self, off_t bit_index) {
-	bitarray_set_bit(self->bitarray_commons,bit_index);
-}
-
-//---------------------------------------------------------------------------
-void kbitarray_clean_bit(t_kbitarray* self, off_t bit_index) {
-	bitarray_clean_bit(self->bitarray_commons,bit_index);
-}
-
-//---------------------------------------------------------------------------
-size_t kbitarray_get_size_in_bits(t_kbitarray* self) {
-	return self->size_in_bits;
-}
-
-//---------------------------------------------------------------------------
-size_t kbitarray_get_size_in_bytes(t_kbitarray* self) {
-	return self->bitarray_commons->size;
-}
-
-//---------------------------------------------------------------------------
-void kbitarray_destroy(t_kbitarray* self) {
-	free(self->bitarray_commons->bitarray);
-	bitarray_destroy(self->bitarray_commons);
-	free(self);
 }

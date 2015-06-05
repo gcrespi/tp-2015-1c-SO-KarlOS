@@ -65,7 +65,8 @@ void free_conf_nodo();
 void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
-
+int esperar_instrucciones_del_filesystem(int);
+int recibir_Bloque(int);
 //Main
 int main(void) {
 	int socket_fs; // file descriptor del FS
@@ -88,13 +89,11 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	//esperar_instrucciones_del_filesystem()
-		//recibir_protocolo()
-		//case ESCRIBIR_BLOCK -> recibir num bloque e info
-		//recibir(socket_fs,data[offset]);
+	mapearArchivo();
 
-		//case LEER_BLOCK -> recibir num bloque
-		//enviar_string(socket_fs,data[offset]);
+	esperar_instrucciones_del_filesystem(socket_fs);
+
+
 
 	free_conf_nodo();
 
@@ -103,6 +102,41 @@ int main(void) {
 }
 
 //---------------------------------------------------------------------------
+
+int esperar_instrucciones_del_filesystem(int socket){
+
+	uint32_t tarea;
+	tarea = recibir_protocolo(socket);
+
+	switch (tarea) {
+		case WRITE_BLOCK:
+			recibir_Bloque(socket);
+			break;
+		default:
+			return -1;
+		}
+		//case ESCRIBIR_BLOCK -> recibir num bloque e info
+		//recibir(socket_fs,data[offset]);
+
+		//case LEER_BLOCK -> recibir num bloque
+		//enviar_string(socket_fs,data[offset]);
+	return tarea;
+
+}
+
+//---------------------------------------------------------------------------
+
+int recibir_Bloque(int socket) {
+
+	int result = 1;
+    int nroBloque;
+		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		result = (result > 0) ? recibir(socket, &data[nroBloque*block_size]) : result;
+		return result;
+}
+
+//---------------------------------------------------------------------------
+
 void levantar_arch_conf_nodo() {
 	char** properties =
 			string_split(

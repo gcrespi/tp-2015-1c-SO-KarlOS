@@ -122,7 +122,6 @@ void levantar_arch_conf_marta(t_conf_MaRTA* conf) {
 
 	char** properties = string_split("PUERTO_LISTEN,IP_FS,PUERTO_FS", ",");
 	t_config* conf_arch = config_create("marta.cfg");
-//	t_config* conf_arch = config_create("/home/gustavo/git/tp-2015-1c-karlos/marta/Debug/marta.cfg");
 
 	if (has_all_properties(3, properties, conf_arch)) {
 		conf->puerto_listen = config_get_int_value(conf_arch, properties[0]);

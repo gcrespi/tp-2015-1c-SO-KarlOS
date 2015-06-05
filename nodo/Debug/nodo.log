@@ -1,0 +1,18 @@
+[ERROR] 12:22:37:40 NODO/(3257:3257): no se pudo enviar el info nodo
+[INFO] 12:23:26:932 NODO/(3376:3376): Se envio correctamente info nodo
+[INFO] 12:35:12:72 NODO/(3674:3674): Se envio correctamente info nodo
+[INFO] 12:36:21:425 NODO/(3706:3706): Se envio correctamente info nodo
+[DEBUG] 12:39:25:953 NODO/(3767:3767): id: 1
+[INFO] 12:39:26:101 NODO/(3767:3767): Se envio correctamente info nodo
+[DEBUG] 12:40:00:566 NODO/(3796:3796): id: 100
+[INFO] 12:40:00:703 NODO/(3796:3796): Se envio correctamente info nodo
+[DEBUG] 12:47:44:541 NODO/(3944:3944): id: 100
+[ERROR] 12:47:44:725 NODO/(3944:3944): no se pudo enviar el info nodo
+[DEBUG] 12:47:51:940 NODO/(3950:3950): id: 100
+[INFO] 12:47:52:61 NODO/(3950:3950): Se envio correctamente info nodo
+[DEBUG] 12:55:58:670 NODO/(4122:4122): id: 100
+[INFO] 12:55:58:820 NODO/(4122:4122): Se envio correctamente info nodo
+[DEBUG] 12:56:43:293 NODO/(4152:4152): id: 100
+[INFO] 12:56:43:408 NODO/(4152:4152): Se envio correctamente info nodo
+[DEBUG] 12:57:58:90 NODO/(4197:4197): id: 100
+[ERROR] 12:57:59:239 NODO/(4197:4197): no se pudo enviar el info nodo

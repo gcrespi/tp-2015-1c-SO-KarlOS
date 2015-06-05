@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <commons/config.h>
 #include <commons/string.h>
+#include <commons/log.h>
 #include <string.h>
 #include <errno.h>
 #include <netdb.h>
@@ -21,19 +22,20 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "../../connectionlib/connectionlib.h"
 
-
-
 // Estructuras
-   // La estructura que envia el nodo al FS al iniciarse
+// La estructura que envia el nodo al FS al iniciarse
 struct info_nodo {
 	int id;
 	int nodo_nuevo;
 	int cant_bloques;
 };
 
-   // Una estructura que contiene todos los datos del arch de conf
+// Una estructura que contiene todos los datos del arch de conf
 struct conf_nodo {
 	int id;
 	char* ip_fs;
@@ -48,121 +50,167 @@ struct conf_nodo {
 
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
-int socketfd_fs; // file descriptor del FS
 
+char *data; // data del archivo mapeado
+#define block_size 4*1024 // tamaño de cada bloque del dat
+
+t_log* logger;
 
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
-void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
-int enviar_info_nodo (int, struct info_nodo*);
+//void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
+int enviar_info_nodo(int, struct info_nodo*);
 void free_conf_nodo();
-
+void mapearArchivo();
+void cargarBloque(int, char*, int);
+void mostrarBloque(int);
+int esperar_instrucciones_del_filesystem(int);
+int recibir_Bloque(int);
 //Main
 int main(void) {
+	int socket_fs; // file descriptor del FS
+
+	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
+
 	levantar_arch_conf_nodo();
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-	struct sockaddr_in socketaddr_fs;
-	setSocketAddrStd(&socketaddr_fs,conf.ip_fs,conf.puerto_fs);
+//	solicitarConexionConFS(&socketaddr_fs,&info_envio);
+	socket_fs = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
 
-	solicitarConexionConFS(&socketaddr_fs,&info_envio);
+	log_debug(logger,"id: %i",info_envio.cant_bloques);
+
+	if (enviar_info_nodo(socket_fs, &info_envio) <= 0) {
+		log_error(logger, "no se pudo enviar el info nodo");
+	} else {
+		log_info(logger, "Se envio correctamente info nodo");
+	}
+
+	mapearArchivo();// asas
+
+	esperar_instrucciones_del_filesystem(socket_fs);
+
+
 
 	free_conf_nodo();
 
+	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf_nodo(){
-	t_config* conf_arch;
-	conf_arch = config_create("nodo.cfg");
-	if (config_has_property(conf_arch,"ID")){
-			conf.id = config_get_int_value(conf_arch,"ID");
-		} else printf("Error: el archivo de conf no tiene IP_FS\n");
-	if (config_has_property(conf_arch,"IP_FS")){
-		conf.ip_fs = strdup(config_get_string_value(conf_arch,"IP_FS"));
-	} else printf("Error: el archivo de conf no tiene IP_FS\n");
-	if (config_has_property(conf_arch,"PUERTO_FS")){
-		conf.puerto_fs = config_get_int_value(conf_arch,"PUERTO_FS");
-	} else printf("Error: el archivo de conf no tiene PUERTO_FS\n");
-	if (config_has_property(conf_arch,"ARCHIVO_BIN")){
-		conf.archivo_bin= strdup(config_get_string_value(conf_arch,"ARCHIVO_BIN"));
-	} else printf("Error: el archivo de conf no tiene ARCHIVO_BIN\n");
-	if (config_has_property(conf_arch,"DIR_TEMP")){
-		conf.dir_temp = strdup(config_get_string_value(conf_arch,"DIR_TEMP"));
-	} else printf("Error: el archivo de conf no tiene DIR_TEMP\n");
-	if (config_has_property(conf_arch,"NODO_NUEVO")){
-		conf.nodo_nuevo = config_get_int_value(conf_arch,"NODO_NUEVO");
-	} else printf("Error: el archivo de conf no tiene NODO_NUEVO\n");
-	if (config_has_property(conf_arch,"IP_NODO")){
-		conf.ip_nodo = strdup(config_get_string_value(conf_arch,"IP_NODO"));
-	} else printf("Error: el archivo de conf no tiene IP_NODO\n");
-	if (config_has_property(conf_arch,"PUERTO_NODO")){
-		conf.puerto_nodo = config_get_int_value(conf_arch,"PUERTO_NODO");
-	} else printf("Error: el archivo de conf no tiene PUERTO_NODO\n");
-	if (config_has_property(conf_arch,"CANT_BLOQUES")){
-		conf.cant_bloques = config_get_int_value(conf_arch,"CANT_BLOQUES");
-	} else printf("Error: el archivo de conf no tiene CANT_BLOQUES\n");
+
+int esperar_instrucciones_del_filesystem(int socket){
+
+	uint32_t tarea;
+	tarea = recibir_protocolo(socket);
+
+	switch (tarea) {
+		case WRITE_BLOCK:
+			recibir_Bloque(socket);
+			break;
+		default:
+			return -1;
+		}
+		//case ESCRIBIR_BLOCK -> recibir num bloque e info
+		//recibir(socket_fs,data[offset]);
+
+		//case LEER_BLOCK -> recibir num bloque
+		//enviar_string(socket_fs,data[offset]);
+	return tarea;
+
+}
+
+//---------------------------------------------------------------------------
+
+int recibir_Bloque(int socket) {
+
+	int result = 1;
+    int nroBloque;
+		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		result = (result > 0) ? recibir(socket, &data[nroBloque*block_size]) : result;
+		return result;
+}
+
+//---------------------------------------------------------------------------
+
+void levantar_arch_conf_nodo() {
+	char** properties =
+			string_split(
+					"ID,IP_FS,PUERTO_FS,ARCHIVO_BIN,DIR_TEMP,NODO_NUEVO,IP_NODO,PUERTO_NODO,CANT_BLOQUES",
+					",");
+	t_config* conf_arch = config_create("nodo.cfg");
+
+	if (has_all_properties(9, properties, conf_arch)) {
+		conf.id = config_get_int_value(conf_arch, properties[0]);
+		conf.ip_fs = strdup(config_get_string_value(conf_arch, properties[1]));
+		conf.puerto_fs = config_get_int_value(conf_arch, properties[2]);
+		conf.archivo_bin = strdup(
+				config_get_string_value(conf_arch, properties[3]));
+		conf.dir_temp = strdup(
+				config_get_string_value(conf_arch, properties[4]));
+		conf.nodo_nuevo = config_get_int_value(conf_arch, properties[5]);
+		conf.ip_nodo = strdup(
+				config_get_string_value(conf_arch, properties[6]));
+		conf.puerto_nodo = config_get_int_value(conf_arch, properties[7]);
+		conf.cant_bloques = config_get_int_value(conf_arch, properties[8]);
+	} else {
+		log_error(logger, "Faltan propiedades en archivo de Configuración");
+		exit(-1);
+	}
+
+	free_string_splits(properties);
 	config_destroy(conf_arch);
 }
 
 //---------------------------------------------------------------------------
-void setNodoToSend(struct info_nodo *info_envio){
+void setNodoToSend(struct info_nodo *info_envio) {
 	info_envio->id = conf.id;
 	info_envio->nodo_nuevo = conf.nodo_nuevo;
 	info_envio->cant_bloques = conf.cant_bloques;
 }
 
+////---------------------------------------------------------------------------
+//void solicitarConexionConFS(struct sockaddr_in *direccionDestino,
+//		struct info_nodo *info_envio) {
+//
+//	if ((socket_fs = socket(AF_INET, SOCK_STREAM, 0)) == -1) { // crea un Socket
+//		perror("Error while socket()");
+//		exit(-1);
+//	}
+//
+//	if (connect(socket_fs, (struct sockaddr*) direccionDestino,
+//			sizeof(struct sockaddr)) == -1) { // conecta con el servidor
+//		perror("Error while connect()");
+//		exit(-1);
+//	}
+//
+//	if (enviar_info_nodo(socket_fs, info_envio) == -1) { // envia la estructura al FS
+//		perror("Error while send()");
+//		exit(-1);
+//	}
+//
+//}
+
 //---------------------------------------------------------------------------
-void solicitarConexionConFS(struct sockaddr_in *direccionDestino, struct info_nodo *info_envio) {
+int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 
-	if ((socketfd_fs = socket(AF_INET, SOCK_STREAM, 0)) == -1) { // crea un Socket
-		perror("Error while socket()");
-		exit(-1);
-	}
+	int result = 1;
 
-	if (connect(socketfd_fs, (struct sockaddr*) direccionDestino,
-			sizeof(struct sockaddr)) == -1) { // conecta con el servidor
-		perror("Error while connect()");
-		exit(-1);
-	}
+	result = (result > 0) ? enviar_protocolo(socket, INFO_NODO) : result;
+	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
+	result =
+			(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
+	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
 
-	if (enviar_info_nodo(socketfd_fs, info_envio) == -1) { // envia la estructura al FS
-		perror("Error while send()");
-		exit(-1);
-	}
-
-}
-
-//---------------------------------------------------------------------------
-int enviar_info_nodo (int socket, struct info_nodo *info_nodo){
-
-	int result=0;
-	uint32_t prot = INFO_NODO;
-	if ((result += send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
-		perror("Error sending");
-		exit(-1);
-	}
-	if ((result += enviar(socket, &(info_nodo->id), sizeof(info_nodo->id))) == -1) { //envia el segundo campo
-		perror("Error sending");
-		exit(-1);
-	}
-	if ((result += enviar(socket, &(info_nodo->cant_bloques), sizeof(info_nodo->cant_bloques))) == -1) { //envia el primer campo
-		perror("Error sending");
-		exit(-1);
-	}
-	if ((result += enviar(socket, &(info_nodo->nodo_nuevo), sizeof(info_nodo->nodo_nuevo))) == -1) { //envia el segundo campo
-		perror("Error sending");
-		exit(-1);
-	}
 	return result;
 }
 
 //---------------------------------------------------------------------------
-void free_conf_nodo(){
+void free_conf_nodo() {
 	free(conf.ip_fs);
 	free(conf.archivo_bin);
 	free(conf.dir_temp);
@@ -170,3 +218,37 @@ void free_conf_nodo(){
 }
 
 //---------------------------------------------------------------------------
+void mapearArchivo() {
+
+	int fd;
+	struct stat sbuf;
+	char* path = conf.archivo_bin;
+
+	if ((fd = open(path, O_RDWR)) == -1) {
+		perror("open()");
+		exit(1);
+	}
+
+	if (fstat(fd, &sbuf) == -1) {
+		perror("fstat()");
+	}
+
+	data = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			fd, 0);
+
+	if (data == (caddr_t) (-1)) {
+		perror("mmap");
+		exit(1);
+	}
+}
+//---------------------------------------------------------------------------
+void cargarBloque(int nroBloque, char* info, int offset_byte) {
+	int pos_a_escribir = nroBloque * block_size + offset_byte;
+	memcpy(data + pos_a_escribir, info, strlen(info));
+	//data[pos_a_escribir+strlen(info)]='\0';
+
+}
+//---------------------------------------------------------------------------
+void mostrarBloque(int nroBloque) {
+	printf("info bloque: %s\n", &(data[nroBloque * block_size]));
+}

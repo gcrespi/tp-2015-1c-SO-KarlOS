@@ -47,7 +47,7 @@ void kbitarray_clean_all(t_kbitarray* self) {
 	int i;
 
 	for (i = 0; i < self->char_count; i++) {
-		self->bitarray[i] = 0;
+		self->bitarray[i] = CHAR_CLEAN;
 	}
 }
 
@@ -64,7 +64,7 @@ void kbitarray_set_all(t_kbitarray* self) {
 	int i;
 
 	for (i = 0; i < self->char_count; i++) {
-		self->bitarray[i] = CHAR_MIN; //XXX TESTME
+		self->bitarray[i] = CHAR_SET; //XXX TESTME
 	}
 }
 
@@ -123,7 +123,7 @@ off_t kbitarray_find_first_char_not_clean(t_kbitarray* self) {
 
 	off_t char_index;
 
-	for (char_index = 0; (char_index < self->char_count) && (self->bitarray[char_index] == 0); char_index++)
+	for (char_index = 0; (char_index < self->char_count) && (self->bitarray[char_index] == CHAR_CLEAN); char_index++)
 		;
 
 	return (char_index < self->char_count) ? char_index : -1;
@@ -134,7 +134,7 @@ off_t kbitarray_find_first_char_not_set(t_kbitarray* self) {
 
 	off_t char_index;
 
-	for (char_index = 0; (char_index < self->char_count) && (self->bitarray[char_index] == CHAR_MIN); char_index++)
+	for (char_index = 0; (char_index < self->char_count) && (self->bitarray[char_index] == CHAR_SET); char_index++)
 		;
 
 	return (char_index < self->char_count) ? char_index : -1;

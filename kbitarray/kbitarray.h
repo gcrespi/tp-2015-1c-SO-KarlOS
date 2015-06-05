@@ -17,6 +17,9 @@
 #include <limits.h>
 #include <unistd.h>
 
+#define CHAR_CLEAN 	0
+#define CHAR_SET 	UCHAR_MAX
+
 typedef struct {
 	char *bitarray;
 	size_t char_count;

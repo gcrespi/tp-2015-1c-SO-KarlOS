@@ -19,10 +19,13 @@
 #include <errno.h>
 #include <netdb.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include "../../connectionlib/connectionlib.h"
 
@@ -32,6 +35,9 @@
 #define BOLD "\033[1m"
 #define NORMAL "\033[0m"
 #define CLEAR "\033[H\033[J"
+#define OFFSET 0
+#define BLOCK_SIZE 4*1024 //20*1024*1024
+#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
 enum t_estado_nodo {
@@ -125,10 +131,11 @@ void format();
 void pwd();
 void ls();
 void cd(char*);
-void mkdir(char*);
+void makedir(char*);
 void remdir(char*);
 void mvdir(char*, char*);
 void renamedir(char*,char*);
+void upload(char*, char*);
 void lsnode();
 void addnode(char*);
 
@@ -181,6 +188,8 @@ int main(void) {                                         //TODO aca esta el main
 
 	return EXIT_SUCCESS;
 }
+
+//---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
 void hilo_listener() {
@@ -384,6 +393,14 @@ int any_dir_with_name(char* name, t_list* list){
 	return list_any_satisfy(list, (void*) _eq_name);
 }
 
+//---------------------------------------------------------------------------
+int contains(void* elem, t_list* list){
+	int _eq(void* any_elem){
+		return elem == any_elem;
+	}
+	return list_any_satisfy(list, (void*) _eq);
+}
+
 							 //DESTROYERS
 //---------------------------------------------------------------------------
 void info_nodo_destroy(struct info_nodo* self){
@@ -574,12 +591,12 @@ char execute_command(char* command){
 //		case  6: mv(subcommands[1],subcommands[2]); break;
 //		case  7: rename(subcommands[1],subcommands[2]); break;
 
-		case  8: mkdir(subcommands[1]); break;
+		case  8: makedir(subcommands[1]); break;
 		case  9: remdir(subcommands[1]); break;
 		case 10: mvdir(subcommands[1],subcommands[2]); break;
 		case 11: renamedir(subcommands[1],subcommands[2]); break;
 
-//		case 12: upload(subcommands[1],subcommands[2]); break;
+		case 12: upload(subcommands[1],subcommands[2]); break;
 //		case 13: download(subcommands[1],subcommands[2]); break;
 //		case 14: md5(subcommands[1]); break;
 
@@ -683,7 +700,7 @@ void cd(char* dir_path){
 }
 
 //---------------------------------------------------------------------------
-void mkdir(char* dir_path){
+void makedir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 	if (dir_path==NULL) {
 		puts("mkdir: falta un operando");
 	} else {
@@ -705,7 +722,7 @@ void mkdir(char* dir_path){
 }
 
 //---------------------------------------------------------------------------
-void remdir(char* dir_path){
+void remdir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 	struct t_dir* dir_aux;
 	if(dir_path==NULL){
 		puts("rmdir: falta un operando");
@@ -721,7 +738,7 @@ void remdir(char* dir_path){
 }
 
 //---------------------------------------------------------------------------
-void mvdir(char* old_path, char* new_path){
+void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas cosas aca
 	struct t_dir *dir_aux,
 				 *parent_dir_aux;
 	char *dir_name,
@@ -749,7 +766,7 @@ void mvdir(char* old_path, char* new_path){
 }
 
 //---------------------------------------------------------------------------
-void renamedir(char* dir_path, char* new_name){ //todo esto estaria siendo muy inutil
+void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo muy inutil
 	struct t_dir* dir_aux;
 	char* old_name;
 	if(dir_path==NULL){
@@ -767,6 +784,88 @@ void renamedir(char* dir_path, char* new_name){ //todo esto estaria siendo muy i
 	} else {
 		puts("error: el directorio no existe");
 	}
+}
+
+//---------------------------------------------------------------------------
+int has_disp_block(struct t_nodo* nodo){
+	return 1;
+}
+
+//---------------------------------------------------------------------------
+struct t_nodo* get_nodo_disp(t_list* list_used){ //Devuelve el socket de un nodo que tenga espacio disponible y no este en la lista de usados
+	int _disp_and_not_used(struct t_nodo* nodo){
+		return has_disp_block(nodo) && !contains(nodo, list_used);
+	}
+	return list_find(listaNodos, (void*) _disp_and_not_used);
+}
+
+//---------------------------------------------------------------------------
+int dividir_int(int numerador, int denominador){
+	if (numerador % denominador){
+		return div(numerador,denominador).quot + 1;
+	} else {
+		return div(numerador,denominador).quot;
+	}
+}
+
+//---------------------------------------------------------------------------
+int send_blocks(char* data){
+	struct t_nodo* nodo_disp;
+	int i, fin = 0;
+	int data_last_index = string_length(data)-1,
+		block_start = 0,
+		block_end;
+	char* data_dup;
+	t_list* list_used = list_create();
+
+	while(!fin){
+		block_end = block_start + BLOCK_SIZE;
+		if(block_end > data_last_index){
+			block_end = data_last_index;
+			fin = 1;
+		}
+		while(data[block_end]!='\n') block_end--;
+		data[block_end]='\0';
+		for(i=0;i<CANT_COPIAS;i++){
+			nodo_disp = get_nodo_disp(list_used);
+			if (enviar_string(nodo_disp->socketfd_nodo, &data_dup[block_start]) == -1) {
+				perror("enviar bloque"); //TODO manejar el error
+				list_destroy(list_used);
+				return -1;
+			}
+			list_add(list_used, nodo_disp);
+		}
+		block_start = block_end + 1;
+	}
+	list_destroy(list_used);
+	return 0;
+}
+
+//---------------------------------------------------------------------------
+void upload(char* local_path, char* mdfs_path) {
+
+	int local_fd, num_blocks;
+	struct stat file_stat;
+	char* data;
+
+	if ((local_fd = open("/home/utnso/archivoBasura.dat", O_RDONLY)) != -1) {
+		fstat(local_fd, &file_stat);
+		data = mmap((caddr_t)0, file_stat.st_size, PROT_READ, MAP_SHARED, local_fd, OFFSET);
+		if (data == (caddr_t)(-1)) {
+			perror("mmap");
+			exit(1);
+		}
+
+		send_blocks(data);
+
+		if (close(local_fd) == -1) {
+			perror("close");
+			exit(1);
+		}
+	} else {
+		perror("Error abriendo el archivo");
+	}
+
 }
 
 //---------------------------------------------------------------------------
@@ -788,7 +887,7 @@ void lsnode() {
 }
 
 //---------------------------------------------------------------------------
-void addnode(char* IDstr){
+void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
 	int ID = strtol(IDstr, NULL, 10);
 	int _hasTheSameID(struct info_nodo* ninf){
 		return ninf->id == ID;
@@ -798,8 +897,9 @@ void addnode(char* IDstr){
 		nuevo_nodo.id_nodo = infnod->id;
 		nuevo_nodo.estado = infnod->nodo_nuevo;
 		nuevo_nodo.cantidad_bloques = infnod->cant_bloques;
-		nuevo_nodo.socketfd_nodo = infnod ->socketfd_nodo;
-	list_add(listaNodos, &nuevo_nodo); //TODO Hay que persistir algunas cosas aca
+		nuevo_nodo.socketfd_nodo = infnod->socketfd_nodo;
+	info_nodo_destroy(infnod);
+	list_add(listaNodos, &nuevo_nodo);
 }
 
 

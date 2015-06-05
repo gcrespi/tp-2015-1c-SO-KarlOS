@@ -8,8 +8,10 @@
 #ifndef CONNECTIONLIB_H_
 #define CONNECTIONLIB_H_
 
-#include <commons/bitarray.h>
-
+#include <commons/config.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <arpa/inet.h>
 
 typedef struct {
 	char *buffer;

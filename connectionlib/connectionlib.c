@@ -18,9 +18,68 @@
 #include <ifaddrs.h>
 #include <string.h>
 #include <commons/config.h>
+#include <commons/string.h>
 #include "../connectionlib/connectionlib.h"
 
 #define BACKLOG 5
+
+
+////********************************XXX TESTME XXX******************************* //ROMPE TODO
+//
+////---------------------------------------------------------------------------
+//t_buffer* buffer_create_with_protocol(uint32_t protocolo) {
+//	t_buffer* self;
+//	self = malloc(sizeof(t_buffer));
+//	self->buffer = malloc(sizeof(uint32_t));
+//	self->size = sizeof(uint32_t);
+//
+//	memcpy(self->buffer,&protocolo,sizeof(uint32_t));
+//
+//	return self;
+//}
+//
+////---------------------------------------------------------------------------
+//void buffer_destroy(t_buffer* self) {
+//	free(self->buffer);
+//	free(self);
+//}
+//
+////---------------------------------------------------------------------------
+//void buffer_add_string(t_buffer* self, char *string_to_add) {
+//	uint32_t length_string = strlen(string_to_add);
+//	off_t offset_to_write = self->size;
+//
+//	self->size += sizeof(uint32_t) + strlen(string_to_add) + 1;
+//	self->buffer = realloc(self->buffer, self->size);
+//
+//	memcpy((self->buffer + offset_to_write), &length_string, sizeof(uint32_t));
+//	offset_to_write += sizeof(uint32_t);
+//
+//	memcpy((self->buffer + offset_to_write), string_to_add, length_string + 1);
+//}
+//
+////---------------------------------------------------------------------------
+//void buffer_add_int(t_buffer* self, uint32_t int_to_add) {
+//	uint32_t length_int = sizeof(uint32_t);
+//	off_t offset_to_write = self->size;
+//
+//	self->size += sizeof(uint32_t) + sizeof(uint32_t);
+//	self->buffer = realloc(self->buffer, self->size);
+//
+//	memcpy((self->buffer + offset_to_write), &length_int, sizeof(uint32_t));
+//	offset_to_write += sizeof(uint32_t);
+//
+//	memcpy((self->buffer + offset_to_write), &int_to_add, sizeof(uint32_t));
+//}
+//
+////---------------------------------------------------------------------------
+//int send_buffer_and_destroy(int socket, t_buffer* self) {
+//	int result = enviar(socket, self->buffer, self->size);
+//	buffer_destroy(self);
+//
+//	return result;
+//}
+////********************************XXX TESTME XXX*******************************
 
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {
@@ -157,38 +216,8 @@ int enviar(int socket, void *buffer, uint32_t size_buffer) {
 		size_sended += sending;
 	}
 
-	return 0;
+	return size_sended;
 }
-
-////---------------------------------------------------------------------------
-//int recibir(int socket, void *buffer) {
-//
-//	uint32_t size_received = 0;
-//	uint32_t receiving;
-//
-//	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-//	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
-//		mostrar_error(-1, "Error reciving");
-//		return -1;
-//	}
-//
-//	if(receiving == 0)
-//	{	return 0;}
-//
-//	//TODO TESTME
-//	while (size_received < size_buffer) {
-//		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
-//			mostrar_error(-1, "Error receiving");
-//			return -1;
-//		}
-//
-//		if(receiving == 0)
-//		{	return 0;}
-//
-//		size_received += receiving;
-//	}
-//	return size_received;
-//}
 
 //---------------------------------------------------------------------------
 int recibir(int socket, void *buffer) {

@@ -10,10 +10,24 @@
 
 #include <commons/bitarray.h>
 
+
+typedef struct {
+	char *buffer;
+	size_t size;
+} t_buffer;
+
+
 //Enum del protocolo
 enum protocolo {
 	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO, FINISHED_JOB, ABORTED_JOB
 };
+
+t_buffer* buffer_create_with_protocol(uint32_t protocolo);
+void buffer_add_string(t_buffer* self, char *string_to_add);
+void buffer_add_int(t_buffer* self, uint32_t int_to_add);
+int send_buffer_and_destroy(int socket, t_buffer* self);
+void buffer_destroy(t_buffer* self);
+
 
 uint32_t recibir_protocolo(int socket);
 int enviar_protocolo(int socket, uint32_t protocolo);

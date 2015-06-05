@@ -89,7 +89,7 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	mapearArchivo();
+	mapearArchivo();// asas
 
 	esperar_instrucciones_del_filesystem(socket_fs);
 

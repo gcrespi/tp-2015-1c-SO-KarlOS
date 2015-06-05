@@ -21,6 +21,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "../../connectionlib/connectionlib.h"
 
 
@@ -49,6 +52,8 @@ struct conf_nodo {
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 int socketfd_fs; // file descriptor del FS
+char *data; // data del archivo mapeado
+#define block_size 4*1024 // tamaño de cada bloque
 
 
 //Prototipos
@@ -57,6 +62,9 @@ void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser envi
 void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo (int, struct info_nodo*);
 void free_conf_nodo();
+void mapearArchivo ();
+void cargarBloque(int, char*, int);
+void mostrarBloque(int);
 
 //Main
 int main(void) {
@@ -170,3 +178,36 @@ void free_conf_nodo(){
 }
 
 //---------------------------------------------------------------------------
+void mapearArchivo (){
+
+	 int fd;
+	 struct stat sbuf;
+	 char* path= conf.archivo_bin;
+
+     if ((fd = open(path, O_RDWR)) == -1) {
+	        perror("open()");
+	        exit(1);
+	  }
+
+	  if(fstat(fd, &sbuf) == -1) {
+	    	perror("fstat()");
+	 }
+
+	 data = mmap((caddr_t)0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	    if (data == (caddr_t)(-1)) {
+	        perror("mmap");
+	        exit(1);
+	    }
+}
+//---------------------------------------------------------------------------
+void cargarBloque(int nroBloque, char* info, int offset_byte){
+    int pos_a_escribir = nroBloque*block_size + offset_byte;
+	memcpy(data+pos_a_escribir, info, strlen(info));
+	//data[pos_a_escribir+strlen(info)]='\0';
+
+}
+//---------------------------------------------------------------------------
+void mostrarBloque(int nroBloque){
+	 printf("info bloque: %s\n", &(data[nroBloque*block_size ]));
+}

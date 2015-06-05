@@ -52,7 +52,7 @@ struct conf_nodo {
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 
 char *data; // data del archivo mapeado
-#define block_size 4*1024 // tamaño de cada bloque
+#define block_size 4*1024 // tamaño de cada bloque del dat
 
 t_log* logger;
 

@@ -121,10 +121,14 @@ struct info_nodo {
 void receive_command(char*, int);
 char execute_command(char*);
 void help();
+void format();
 void pwd();
 void ls();
 void cd(char*);
 void mkdir(char*);
+void remdir(char*);
+void mvdir(char*, char*);
+void renamedir(char*,char*);
 void lsnode();
 void addnode(char*);
 
@@ -142,6 +146,8 @@ void arch_destroy(struct t_archivo*);
 void bloque_destroy(struct t_bloque*);
 void nodo_destroy(struct t_nodo*);
 void print_path_actual();
+int warning(char*);
+struct t_dir* dir_create(char*, struct t_dir*);
 void get_info_from_path(char*, char**, struct t_dir**);
 struct t_dir* get_dir_from_path(char*);
 
@@ -169,6 +175,7 @@ int main(void) {                                         //TODO aca esta el main
 		end = execute_command(command);
 	} while(!end);
 
+	dir_destroy(root);
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	pthread_join(t_listener, NULL);
 
@@ -345,12 +352,10 @@ void preparar_fs () {
 void set_root(){
 	struct t_dir* dir_root;
 	dir_root = malloc(sizeof(struct t_dir));
-		dir_root->id_dir = 0;
 		dir_root->nombre = string_duplicate("root");
 		dir_root->parent_dir = NULL;
 		dir_root->list_dirs = list_create();
 		dir_root->list_archs = list_create();
-	dir_id_counter = 1;
 	root = dir_root;
 	dir_actual = dir_root;
  }
@@ -386,8 +391,8 @@ void info_nodo_destroy(struct info_nodo* self){
 }
 
 //---------------------------------------------------------------------------
-void dir_destroy(struct t_dir* self){
-	free(self->nombre);
+void nodo_destroy(struct t_nodo* self){
+	bitarray_destroy(&self->bloquesLlenos);
 	free(self);
 }
 
@@ -404,8 +409,10 @@ void arch_destroy(struct t_archivo* self){
 }
 
 //---------------------------------------------------------------------------
-void nodo_destroy(struct t_nodo* self){
-	bitarray_destroy(&self->bloquesLlenos);
+void dir_destroy(struct t_dir* self){
+	list_destroy_and_destroy_elements(self->list_dirs, (void*) dir_destroy);
+	list_destroy_and_destroy_elements(self->list_archs, (void*) arch_destroy);
+	free(self->nombre);
 	free(self);
 }
 
@@ -430,15 +437,74 @@ void print_path_actual(){
 }
 
 //---------------------------------------------------------------------------
-struct t_dir* get_dir_from_path(char* path){
+int warning(char* message){
+	printf("%s (S/n): ",message);
+	char readed[MAX_COMMAND_LENGTH+1];
+	fgets(readed,MAX_COMMAND_LENGTH+1,stdin);
+	if(readed[1]=='\n') readed[1]='\0';
+	if(string_equals_ignore_case(readed,"s")){
+		return 1;
+	} else {
+		return 0;
+	}
+
+}
+
+//---------------------------------------------------------------------------
+struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
+	struct t_dir* new_dir;
+	new_dir = malloc(sizeof(struct t_dir));
+		new_dir->nombre = dir_name;
+		new_dir->parent_dir = parent_dir;
+		new_dir->list_dirs = list_create();
+		new_dir->list_archs = list_create();
+	return new_dir;
+}
+
+//---------------------------------------------------------------------------
+int dir_is_empty(struct t_dir* dir){
+	if( list_size(dir->list_dirs) || list_size(dir->list_archs) ){
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+//---------------------------------------------------------------------------
+int is_valid_name(char* name, struct t_dir* parent_dir){
+	if(string_equals_ignore_case(name,"..") ||
+	   any_dir_with_name(name,parent_dir->list_dirs)) {
+		return 0;
+	}
+	return 1;
+}
+
+//---------------------------------------------------------------------------
+void dir_move(struct t_dir** dir, struct t_dir** parent_dir){
+	int _eq_name(struct t_dir* direc){
+		return string_equals_ignore_case(direc->nombre,(*dir)->nombre);
+	}
+	list_remove_by_condition((*dir)->parent_dir->list_dirs, (void*) _eq_name);
+	(*dir)->parent_dir = *parent_dir;
+	list_add((*parent_dir)->list_dirs, *dir);
+}
+
+//---------------------------------------------------------------------------
+struct t_dir* get_dir_from_path(char* path){ //Si hay error devuelve NULL
 	char* dir_name;
 	struct t_dir *dir;
 	get_info_from_path(path, &dir_name, &dir);
-	if(string_equals_ignore_case(dir_name,"..")) {
-		if(dir!=root) dir = dir->parent_dir;
-	}  else if (any_dir_with_name(dir_name, dir->list_dirs)) {
-		dir = find_dir_with_name(dir_name, dir->list_dirs);
+	if(dir!=NULL) {
+		if(string_equals_ignore_case(dir_name,"..")) {
+			if(dir!=root) dir = dir->parent_dir;
+		}  else if (any_dir_with_name(dir_name, dir->list_dirs)) {
+			dir = find_dir_with_name(dir_name, dir->list_dirs);
+		} else {
+			free(dir_name);
+			return NULL;
+		}
 	} else {
+		free(dir_name);
 		return NULL;
 	}
 	free(dir_name);
@@ -453,22 +519,23 @@ int string_split_size(char** matriz){ //Todo <- esto esta bueno para agregarlo a
 }
 
 //---------------------------------------------------------------------------
-void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //ACA ESTA LA PAPA ;)
+void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //Si har error: parent_dir = NULL
 	char** sub_dirs = string_split(path,"/");
 	int last_index = string_split_size(sub_dirs)-1;
 	*name = string_duplicate(sub_dirs[last_index]);
 	*parent_dir = dir_actual;
 
 	t_list* list_dirs;
-	int i;
-	for(i=0;i<last_index;i++){
+	int i, error = 0;
+	for(i=0;i<last_index && !error;i++){
 		list_dirs = (*parent_dir)->list_dirs;
 		if(string_equals_ignore_case(sub_dirs[i],"..") ) {
-			*parent_dir = (*parent_dir)->parent_dir;
+			if(*parent_dir!=root) *parent_dir = (*parent_dir)->parent_dir;
 		}  else if (any_dir_with_name(sub_dirs[i], list_dirs)) {
 			*parent_dir = find_dir_with_name(sub_dirs[i], list_dirs);
 		} else {
-			printf("%s: el directorio no existe\n",sub_dirs[i]);
+			*parent_dir = NULL;
+			error = 1;
 		}
 	}
 
@@ -499,19 +566,19 @@ char execute_command(char* command){
 	case 0:
 		help();
 		break;
-//		case  1: format(); break;
+		case  1: format(); break;
 		case  2: pwd(); break;
 		case  3: ls(); break;
 		case  4: cd(subcommands[1]); break;
-//		case  5: rm(subcommands[1]); break;
-//
+//		case  5: rm(subcommands[1]); break
 //		case  6: mv(subcommands[1],subcommands[2]); break;
-//		case  7: renamedir(subcommands[1],subcommands[2]); break;
+//		case  7: rename(subcommands[1],subcommands[2]); break;
+
 		case  8: mkdir(subcommands[1]); break;
-//		case  9: rmdir(subcommands[1]); break;
-//		case 10: mvdir(subcommands[1],subcommands[2]); break;
-//
-//		case 11: renamedir(subcommands[1],subcommands[2]); break;
+		case  9: remdir(subcommands[1]); break;
+		case 10: mvdir(subcommands[1],subcommands[2]); break;
+		case 11: renamedir(subcommands[1],subcommands[2]); break;
+
 //		case 12: upload(subcommands[1],subcommands[2]); break;
 //		case 13: download(subcommands[1],subcommands[2]); break;
 //		case 14: md5(subcommands[1]); break;
@@ -562,6 +629,15 @@ void help(){
 	puts(BOLD" clear"NORMAL" -> Limpiar la pantalla");
 	puts(BOLD" exit"NORMAL" -> Salir del MDSF");
 }
+
+//---------------------------------------------------------------------------
+void format(){
+	if (warning("Esta seguro que desea formatear el MDFS?")) {
+		dir_destroy(root);
+		set_root();
+	}
+}
+
 //---------------------------------------------------------------------------
 void pwd(){
 	print_path_actual();
@@ -571,11 +647,21 @@ void pwd(){
 //---------------------------------------------------------------------------
 void ls(){
 	int empty = 1;
+	//Print Dirs
+	int _dir_orden_alfabetico(struct t_dir* menor, struct t_dir* mayor){
+		return strcmp(menor->nombre,mayor->nombre)==-1;
+	}
+	list_sort(dir_actual->list_dirs, (void*) _dir_orden_alfabetico);
 	void _print_dir(struct t_dir* dir){
 		printf(BOLD"%s  "NORMAL,dir->nombre);
 		empty = 0;
 	}
 	list_iterate(dir_actual->list_dirs, (void*) _print_dir);
+	//Print Archs
+	int _arch_orden_alfabetico(struct t_dir* menor, struct t_dir* mayor){
+		return strcmp(menor->nombre,mayor->nombre)==-1;
+	}
+	list_sort(dir_actual->list_dirs, (void*) _arch_orden_alfabetico);
 	void _print_arch(struct t_archivo* arch){
 		printf("%s  ",arch->nombre);
 		empty = 0;
@@ -592,33 +678,94 @@ void cd(char* dir_path){
 	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
 		dir_actual = dir_aux;
 	} else {
-		puts("error: el directorio no existe");
+		printf("%s: el directorio no existe\n",dir_path);
 	}
 }
 
 //---------------------------------------------------------------------------
 void mkdir(char* dir_path){
-	if (dir_path!=NULL) {
+	if (dir_path==NULL) {
+		puts("mkdir: falta un operando");
+	} else {
 		char* dir_name;
 		struct t_dir* parent_dir;
 		get_info_from_path(dir_path, &dir_name, &parent_dir);
-		struct t_dir* nuevo_dir;
-		nuevo_dir = malloc(sizeof(struct t_dir));
-			nuevo_dir->id_dir = dir_id_counter;
-			nuevo_dir->nombre = string_duplicate(dir_name);
-			nuevo_dir->parent_dir = parent_dir;
-			nuevo_dir->list_dirs = list_create();
-			nuevo_dir->list_archs = list_create();
-		dir_id_counter++;
-		free(dir_name);
-		list_add(parent_dir->list_dirs, nuevo_dir);
-
-		int _orden_alfabetico(struct t_dir* menor, struct t_dir* mayor){
-			return strcmp(menor->nombre,mayor->nombre)==-1;
+		if(parent_dir!=NULL) {
+			if(is_valid_name(dir_name, parent_dir)) {
+				list_add(parent_dir->list_dirs, dir_create(dir_name,parent_dir));
+			} else {
+				printf("%s: no es un nombre valido\n",dir_name);
+				free(dir_name);
+			}
+		} else {
+			printf("%s: el directorio no existe\n",dir_path);
+			free(dir_name);
 		}
-		list_sort(parent_dir->list_dirs, (void*) _orden_alfabetico);
+	}
+}
+
+//---------------------------------------------------------------------------
+void remdir(char* dir_path){
+	struct t_dir* dir_aux;
+	if(dir_path==NULL){
+		puts("rmdir: falta un operando");
+	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
+		if(dir_is_empty(dir_aux)) {
+			dir_destroy(dir_aux);
+		} else if(warning("El directorio no esta vacio, desea eliminarlo de todas formas?")) {
+			dir_destroy(dir_aux);
+		}
 	} else {
-		puts("mkdir: falta un operando");
+		printf("%s: el directorio no existe\n", dir_path);
+	}
+}
+
+//---------------------------------------------------------------------------
+void mvdir(char* old_path, char* new_path){
+	struct t_dir *dir_aux,
+				 *parent_dir_aux;
+	char *dir_name,
+		 *aux_name;
+	if(old_path==NULL || new_path==NULL){
+		puts("mvdir: falta un directorio como operando");
+	} else if((dir_aux = get_dir_from_path(old_path))!=NULL) {
+		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
+		if(parent_dir_aux!=NULL) {
+			if(is_valid_name(dir_name, parent_dir_aux)) {
+				dir_move(&dir_aux, &parent_dir_aux);
+				aux_name = dir_aux->nombre;
+				dir_aux->nombre = dir_name;
+				free(aux_name);
+			} else {
+				printf("%s: no es un nombre valido\n",dir_name);
+				free(dir_name);
+			}
+		} else {
+			printf("%s: el directorio no existe\n",new_path);
+		}
+	} else {
+		printf("%s: el directorio no existe\n",old_path);
+	}
+}
+
+//---------------------------------------------------------------------------
+void renamedir(char* dir_path, char* new_name){ //todo esto estaria siendo muy inutil
+	struct t_dir* dir_aux;
+	char* old_name;
+	if(dir_path==NULL){
+		puts("renamedir: falta un directorio como operando");
+	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
+		if(new_name!=NULL) {
+			if(is_valid_name(new_name, dir_aux->parent_dir)) {
+				old_name = dir_aux->nombre;
+				dir_aux->nombre = string_duplicate(new_name);
+				free(old_name);
+			} else {
+				printf("%s: no es un nombre valido\n",new_name);
+			}
+		}
+	} else {
+		puts("error: el directorio no existe");
 	}
 }
 

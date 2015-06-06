@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include "../../connectionlib/connectionlib.h"
+#include "../../kbitarray/kbitarray.h"
 
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
@@ -37,7 +38,7 @@
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //20*1024*1024
-#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
+#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
 enum t_estado_nodo {
@@ -70,7 +71,7 @@ struct t_nodo {
 
 	//array de bits donde cada bit simboliza un bloque del nodo
 	//bloqueOcupado = 1, bloqueVacio = 0
-	t_bitarray bloquesLlenos;
+	t_kbitarray* bloquesLlenos;
 
 };
 
@@ -91,7 +92,7 @@ struct t_bloque {
 };
 
 //Se persiste, sino perdería toda la info sobre los archivos guardados y sus bloques
-struct t_archivo {
+struct t_arch {
 	//codigo unico del archivo fragmentado
 	int id_archivo;
 
@@ -99,7 +100,7 @@ struct t_archivo {
 	char *nombre;
 
 	//directorio padre del archivo dentro del MDFS
-	int id_dir_padre;
+	struct t_dir *parent_dir;
 
 	//cantidad de bloques en las cuales se fragmento el archivo
 	int cant_bloq;
@@ -131,6 +132,9 @@ void format();
 void pwd();
 void ls();
 void cd(char*);
+void rm(char*);
+void mv(char*,char*);
+void rname(char*,char*);
 void makedir(char*);
 void remdir(char*);
 void mvdir(char*, char*);
@@ -149,12 +153,13 @@ void preparar_fs (); //Configura lo inicial del fs o levanta la informacion pers
 void set_root();
 void info_nodo_destroy(struct info_nodo*);
 void dir_destroy(struct t_dir*);
-void arch_destroy(struct t_archivo*);
+void arch_destroy(struct t_arch*);
 void bloque_destroy(struct t_bloque*);
 void nodo_destroy(struct t_nodo*);
 void print_path_actual();
 int warning(char*);
 struct t_dir* dir_create(char*, struct t_dir*);
+struct t_arch* arch_create(char*, struct t_dir*, int, t_list*);
 void get_info_from_path(char*, char**, struct t_dir**);
 struct t_dir* get_dir_from_path(char*);
 
@@ -163,7 +168,7 @@ struct conf_fs conf; //Configuracion del fs
 char end; //Indicador de que deben terminar todos los hilos
 t_list* list_info_nodo; //Lista de nodos que solicitan conectarse al FS
 t_list* listaNodos; //Lista de nodos
-int dir_id_counter;
+int arch_id_counter;
 struct t_dir* root;
 struct t_dir* dir_actual;
 
@@ -188,8 +193,6 @@ int main(void) {                                         //TODO aca esta el main
 
 	return EXIT_SUCCESS;
 }
-
-//---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
 void hilo_listener() {
@@ -301,17 +304,17 @@ int bloqueActivo(struct t_bloque bloque) {
 }
 
 //---------------------------------------------------------------------------
-int todosLosBloquesDelArchivoDisponibles(struct t_archivo archivo) {
+int todosLosBloquesDelArchivoDisponibles(struct t_arch archivo) {
 	return list_all_satisfy(archivo.bloques, (void*) bloqueActivo);
 }
 
 //---------------------------------------------------------------------------
-int ningunBloqueBorrado(struct t_archivo archivo) {
+int ningunBloqueBorrado(struct t_arch archivo) {
 	return archivo.cant_bloq == list_size(archivo.bloques);
 }
 
 //---------------------------------------------------------------------------
-int estaDisponibleElArchivo(struct t_archivo archivo) {
+int estaDisponibleElArchivo(struct t_arch archivo) {
 	return todosLosBloquesDelArchivoDisponibles(archivo)
 			&& ningunBloqueBorrado(archivo);
 }
@@ -352,6 +355,7 @@ void preparar_fs () {
 	listaNodos = list_create();
 	if(conf.fs_vacio){
 		set_root();
+		arch_id_counter = 0;
 	} else {
 		// ToDo levantar toda la informacion persistida
 	}
@@ -386,9 +390,25 @@ struct t_dir* find_dir_with_name(char* name, t_list* list){
 }
 
 //---------------------------------------------------------------------------
+struct t_arch* find_arch_with_name(char* name, t_list* list){
+	int _eq_name(struct t_arch* arch){
+		return string_equals_ignore_case(arch->nombre,name);
+	}
+	return list_find(list, (void*) _eq_name);
+}
+
+//---------------------------------------------------------------------------
 int any_dir_with_name(char* name, t_list* list){
 	int _eq_name(struct t_dir* direc){
 		return string_equals_ignore_case(direc->nombre,name);
+	}
+	return list_any_satisfy(list, (void*) _eq_name);
+}
+
+//---------------------------------------------------------------------------
+int any_arch_with_name(char* name, t_list* list){
+	int _eq_name(struct t_arch* arch){
+		return string_equals_ignore_case(arch->nombre,name);
 	}
 	return list_any_satisfy(list, (void*) _eq_name);
 }
@@ -409,7 +429,7 @@ void info_nodo_destroy(struct info_nodo* self){
 
 //---------------------------------------------------------------------------
 void nodo_destroy(struct t_nodo* self){
-	bitarray_destroy(&self->bloquesLlenos);
+	kbitarray_destroy(self->bloquesLlenos);
 	free(self);
 }
 
@@ -419,7 +439,19 @@ void bloque_destroy(struct t_bloque* self){
 }
 
 //---------------------------------------------------------------------------
-void arch_destroy(struct t_archivo* self){
+void arch_destroy(struct t_arch* self){
+	void _clean_nodes(struct t_bloque* block) {
+		struct t_nodo* nodo_finded;
+		int i;
+		for(i=0;i<3;i++){
+			int _eq_id_nodo(struct t_nodo*nodo){
+				return nodo->id_nodo == block->copia[i].id_nodo;
+			}
+			nodo_finded = list_find(listaNodos, (void*) _eq_id_nodo);
+			kbitarray_clean_bit(nodo_finded->bloquesLlenos, block->copia[i].bloq_nodo);
+		}
+	}
+	list_iterate(self->bloques, (void*) _clean_nodes);
 	list_destroy_and_destroy_elements(self->bloques, (void*) bloque_destroy);
 	free(self->nombre);
 	free(self);
@@ -431,6 +463,104 @@ void dir_destroy(struct t_dir* self){
 	list_destroy_and_destroy_elements(self->list_archs, (void*) arch_destroy);
 	free(self->nombre);
 	free(self);
+}
+						//MANEJO DE ARCHIVOS
+//---------------------------------------------------------------------------
+int has_disp_block(struct t_nodo* nodo){
+	int blocks_disp;
+	blocks_disp = kbitarray_amount_bits_clean(nodo->bloquesLlenos);
+	return blocks_disp > 0;
+}
+
+//---------------------------------------------------------------------------
+int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el socket de un nodo que tenga espacio disponible y no este en la lista de usados
+	t_list* filtered_list;
+	int _disp_and_not_used(struct t_nodo* nodo){
+		return has_disp_block(nodo) && !contains(nodo, list_used);
+	}
+	filtered_list = list_filter(listaNodos, (void*) _disp_and_not_used);
+	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
+		int amount_clean_n1 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
+		int amount_clean_n2 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
+		return amount_clean_n1 > amount_clean_n2;
+	}
+	list_sort(filtered_list, (void*) _by_more_free_space);
+	*the_choosen_one = list_get(filtered_list,0);
+	list_destroy(filtered_list);
+	if(*the_choosen_one == NULL) return -1;
+	*index_set = kbitarray_find_first_clean((*the_choosen_one)->bloquesLlenos);
+	kbitarray_set_bit((*the_choosen_one)->bloquesLlenos,*index_set);
+	return 0;
+}
+
+//---------------------------------------------------------------------------
+int dividir_int(int numerador, int denominador){
+	if (numerador % denominador){
+		return div(numerador,denominador).quot + 1;
+	} else {
+		return div(numerador,denominador).quot;
+	}
+}
+
+//---------------------------------------------------------------------------
+int first_free_block(struct t_nodo* nodo){
+	return kbitarray_find_first_clean(nodo->bloquesLlenos);
+}
+
+//---------------------------------------------------------------------------
+int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {
+	int e1, e2, e3;
+	int socket_nodo = nodo->socketfd_nodo;
+	e1 = enviar_protocolo(socket_nodo,0); //todo WRITE_BLOCK);
+	if(e1==-1)return -1;
+	e2 = enviar_int(socket_nodo, index_set);
+	if(e2==-1)return -1;
+	e3 = enviar(socket_nodo, &data[block_start], block_end-block_start);
+	if(e3==-1)return -1;
+	return 0;
+}
+
+//---------------------------------------------------------------------------
+int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
+	struct t_nodo* nodo_disp;
+	int i, fin = 0, index_set;
+	int data_last_index = string_length(data)-1,
+		block_start = 0,
+		block_end;
+	t_list* list_used = list_create();
+	struct t_bloque *block;
+	struct t_copia_bloq copy_block;
+
+
+	while(!fin){
+		block = malloc(sizeof(struct t_bloque));
+		block_end = block_start + BLOCK_SIZE;
+		if(block_end > data_last_index){
+			block_end = data_last_index;
+			fin = 1;
+		}
+		while(data[block_end]!='\n') block_end--;
+		for(i=0;i<CANT_COPIAS;i++){
+			if(get_nodo_disp(list_used, &nodo_disp, &index_set)==-1){
+				puts("no hay nodos disponibles");
+				list_destroy(list_used);
+				return -1;
+			}
+			if (send_block(data,nodo_disp,index_set,block_start,block_end)==-1) {
+				list_destroy(list_used);
+				return -1;
+			}
+			list_add(list_used, nodo_disp);
+			copy_block.id_nodo = nodo_disp->id_nodo;
+			copy_block.bloq_nodo = index_set;
+			block->copia[i] = copy_block;
+		}
+		list_add(*list_blocks,block);
+		blocks_sent++;
+		block_start = block_end + 1;
+	}
+	list_destroy(list_used);
+	return 0;
 }
 
 						//CONSOLA Y COMANDOS
@@ -468,6 +598,19 @@ int warning(char* message){
 }
 
 //---------------------------------------------------------------------------
+struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks_sent, t_list* list_blocks){;
+	struct t_arch* new_arch;
+	new_arch = malloc(sizeof(struct t_arch));
+		new_arch->nombre = arch_name;
+		new_arch->parent_dir = parent_dir;
+		new_arch->id_archivo = arch_id_counter;
+		new_arch->cant_bloq = blocks_sent;
+		new_arch->bloques = list_blocks;
+	arch_id_counter++;
+	return new_arch;
+}
+
+//---------------------------------------------------------------------------
 struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 	struct t_dir* new_dir;
 	new_dir = malloc(sizeof(struct t_dir));
@@ -488,7 +631,15 @@ int dir_is_empty(struct t_dir* dir){
 }
 
 //---------------------------------------------------------------------------
-int is_valid_name(char* name, struct t_dir* parent_dir){
+int is_valid_arch_name(char* name, struct t_dir* parent_dir){
+	if(any_dir_with_name(name,parent_dir->list_archs)) {
+		return 0;
+	}
+	return 1;
+}
+
+//---------------------------------------------------------------------------
+int is_valid_dir_name(char* name, struct t_dir* parent_dir){
 	if(string_equals_ignore_case(name,"..") ||
 	   any_dir_with_name(name,parent_dir->list_dirs)) {
 		return 0;
@@ -497,13 +648,44 @@ int is_valid_name(char* name, struct t_dir* parent_dir){
 }
 
 //---------------------------------------------------------------------------
-void dir_move(struct t_dir** dir, struct t_dir** parent_dir){
+void arch_move(struct t_arch** arch, struct t_dir* parent_dir){
+	int _eq_name(struct t_arch* archs){
+		return string_equals_ignore_case(archs->nombre,(*arch)->nombre);
+	}
+	list_remove_by_condition((*arch)->parent_dir->list_archs, (void*) _eq_name);
+	(*arch)->parent_dir = parent_dir;
+	list_add(parent_dir->list_dirs, *arch);
+}
+
+//---------------------------------------------------------------------------
+void dir_move(struct t_dir** dir, struct t_dir* parent_dir){
 	int _eq_name(struct t_dir* direc){
 		return string_equals_ignore_case(direc->nombre,(*dir)->nombre);
 	}
 	list_remove_by_condition((*dir)->parent_dir->list_dirs, (void*) _eq_name);
-	(*dir)->parent_dir = *parent_dir;
-	list_add((*parent_dir)->list_dirs, *dir);
+	(*dir)->parent_dir = parent_dir;
+	list_add(parent_dir->list_dirs, *dir);
+}
+
+//---------------------------------------------------------------------------
+struct t_arch* get_arch_from_path(char* path){ //Si hay error devuelve NULL
+	char* arch_name;
+	struct t_dir* dir;
+	struct t_arch* arch;
+	get_info_from_path(path, &arch_name, &dir);
+	if(dir!=NULL) {
+		if (any_arch_with_name(arch_name, dir->list_archs)) {
+			arch = find_arch_with_name(arch_name, dir->list_archs);
+		} else {
+			free(arch_name);
+			return NULL;
+		}
+	} else {
+		free(arch_name);
+		return NULL;
+	}
+	free(arch_name);
+	return arch;
 }
 
 //---------------------------------------------------------------------------
@@ -587,9 +769,9 @@ char execute_command(char* command){
 		case  2: pwd(); break;
 		case  3: ls(); break;
 		case  4: cd(subcommands[1]); break;
-//		case  5: rm(subcommands[1]); break
-//		case  6: mv(subcommands[1],subcommands[2]); break;
-//		case  7: rename(subcommands[1],subcommands[2]); break;
+		case  5: rm(subcommands[1]); break;
+		case  6: mv(subcommands[1],subcommands[2]); break;
+		case  7: rname(subcommands[1],subcommands[2]); break;
 
 		case  8: makedir(subcommands[1]); break;
 		case  9: remdir(subcommands[1]); break;
@@ -679,7 +861,7 @@ void ls(){
 		return strcmp(menor->nombre,mayor->nombre)==-1;
 	}
 	list_sort(dir_actual->list_dirs, (void*) _arch_orden_alfabetico);
-	void _print_arch(struct t_archivo* arch){
+	void _print_arch(struct t_arch* arch){
 		printf("%s  ",arch->nombre);
 		empty = 0;
 	}
@@ -700,6 +882,73 @@ void cd(char* dir_path){
 }
 
 //---------------------------------------------------------------------------
+void rm(char* arch_path){
+	struct t_arch* arch_aux;
+	if(arch_path==NULL){
+		puts("rm: falta un operando");
+	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
+		int _eq_name(struct t_arch* arch){
+			return string_equals_ignore_case(arch->nombre,arch_aux->nombre);
+		}
+		list_remove_by_condition(arch_aux->parent_dir->list_archs, (void*) _eq_name);
+		arch_destroy(arch_aux);
+	} else {
+		printf("%s: el archivo no existe\n", arch_path);
+	}
+}
+
+//---------------------------------------------------------------------------
+void mv(char* old_path, char* new_path) {
+	struct t_dir *parent_dir_aux;
+	struct t_arch *arch_aux;
+	char *arch_name,
+		 *aux_name;
+	if(old_path==NULL || new_path==NULL){
+		puts("mv: falta un archivo como operando");
+	} else if((arch_aux = get_arch_from_path(old_path))!=NULL) {
+		get_info_from_path(new_path, &arch_name, &parent_dir_aux);
+		if(parent_dir_aux!=NULL) {
+			if(is_valid_arch_name(arch_name, parent_dir_aux)) {
+				arch_move(&arch_aux, parent_dir_aux);
+				aux_name = arch_aux->nombre;
+				arch_aux->nombre = arch_name;
+				free(aux_name);
+			} else {
+				printf("%s: no es un nombre valido\n",arch_name);
+				free(arch_name);
+			}
+		} else {
+			printf("%s: el archivo no existe\n",new_path);
+		}
+	} else {
+		printf("%s: el archivo no existe\n",old_path);
+	}
+}
+
+//---------------------------------------------------------------------------
+void rname(char* arch_path, char* new_name) {
+	struct t_arch *arch_aux;
+	char* aux_name;
+	if(arch_path==NULL){
+		puts("mv: falta un archivo como operando");
+	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
+		if(new_name!=NULL) {
+			if(is_valid_arch_name(new_name, arch_aux->parent_dir)) {
+				aux_name = arch_aux->nombre;
+				arch_aux->nombre = string_duplicate(new_name);
+				free(aux_name);
+			} else {
+				printf("%s: no es un nombre valido\n",new_name);
+			}
+		} else {
+			puts("renamedir: falta un nombre como operando");
+		}
+	} else {
+		printf("%s: el archivo no existe\n",arch_path);
+	}
+}
+
+//---------------------------------------------------------------------------
 void makedir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 	if (dir_path==NULL) {
 		puts("mkdir: falta un operando");
@@ -708,7 +957,7 @@ void makedir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 		struct t_dir* parent_dir;
 		get_info_from_path(dir_path, &dir_name, &parent_dir);
 		if(parent_dir!=NULL) {
-			if(is_valid_name(dir_name, parent_dir)) {
+			if(is_valid_dir_name(dir_name, parent_dir)) {
 				list_add(parent_dir->list_dirs, dir_create(dir_name,parent_dir));
 			} else {
 				printf("%s: no es un nombre valido\n",dir_name);
@@ -727,9 +976,14 @@ void remdir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 	if(dir_path==NULL){
 		puts("rmdir: falta un operando");
 	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
+		int _eq_name(struct t_dir* direc){
+			return string_equals_ignore_case(direc->nombre,dir_aux->nombre);
+		}
 		if(dir_is_empty(dir_aux)) {
+			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
 			dir_destroy(dir_aux);
 		} else if(warning("El directorio no esta vacio, desea eliminarlo de todas formas?")) {
+			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
 			dir_destroy(dir_aux);
 		}
 	} else {
@@ -748,8 +1002,8 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 	} else if((dir_aux = get_dir_from_path(old_path))!=NULL) {
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
-			if(is_valid_name(dir_name, parent_dir_aux)) {
-				dir_move(&dir_aux, &parent_dir_aux);
+			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
+				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;
 				free(aux_name);
@@ -773,13 +1027,15 @@ void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo mu
 		puts("renamedir: falta un directorio como operando");
 	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
 		if(new_name!=NULL) {
-			if(is_valid_name(new_name, dir_aux->parent_dir)) {
+			if(is_valid_dir_name(new_name, dir_aux->parent_dir)) {
 				old_name = dir_aux->nombre;
 				dir_aux->nombre = string_duplicate(new_name);
 				free(old_name);
 			} else {
 				printf("%s: no es un nombre valido\n",new_name);
 			}
+		} else {
+			puts("renamedir: falta un nombre como operando");
 		}
 	} else {
 		puts("error: el directorio no existe");
@@ -787,86 +1043,52 @@ void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo mu
 }
 
 //---------------------------------------------------------------------------
-int has_disp_block(struct t_nodo* nodo){
-	return 1;
-}
-
-//---------------------------------------------------------------------------
-struct t_nodo* get_nodo_disp(t_list* list_used){ //Devuelve el socket de un nodo que tenga espacio disponible y no este en la lista de usados
-	int _disp_and_not_used(struct t_nodo* nodo){
-		return has_disp_block(nodo) && !contains(nodo, list_used);
-	}
-	return list_find(listaNodos, (void*) _disp_and_not_used);
-}
-
-//---------------------------------------------------------------------------
-int dividir_int(int numerador, int denominador){
-	if (numerador % denominador){
-		return div(numerador,denominador).quot + 1;
-	} else {
-		return div(numerador,denominador).quot;
-	}
-}
-
-//---------------------------------------------------------------------------
-int send_blocks(char* data){
-	struct t_nodo* nodo_disp;
-	int i, fin = 0;
-	int data_last_index = string_length(data)-1,
-		block_start = 0,
-		block_end;
-	char* data_dup;
-	t_list* list_used = list_create();
-
-	while(!fin){
-		block_end = block_start + BLOCK_SIZE;
-		if(block_end > data_last_index){
-			block_end = data_last_index;
-			fin = 1;
-		}
-		while(data[block_end]!='\n') block_end--;
-		data[block_end]='\0';
-		for(i=0;i<CANT_COPIAS;i++){
-			nodo_disp = get_nodo_disp(list_used);
-			if (enviar_string(nodo_disp->socketfd_nodo, &data_dup[block_start]) == -1) {
-				perror("enviar bloque"); //TODO manejar el error
-				list_destroy(list_used);
-				return -1;
-			}
-			list_add(list_used, nodo_disp);
-		}
-		block_start = block_end + 1;
-	}
-	list_destroy(list_used);
-	return 0;
-}
-
-//---------------------------------------------------------------------------
-void upload(char* local_path, char* mdfs_path) {
-
-	int local_fd, num_blocks;
+void upload(char* local_path, char* mdfs_path){
+	int local_fd, blocks_sent = 0, send_ok=1; //desinicializar todo
 	struct stat file_stat;
-	char* data;
+	char *data, *arch_name;
+	struct t_dir *parent_dir;
+	t_list* list_blocks = list_create();
 
-	if ((local_fd = open("/home/utnso/archivoBasura.dat", O_RDONLY)) != -1) {
-		fstat(local_fd, &file_stat);
-		data = mmap((caddr_t)0, file_stat.st_size, PROT_READ, MAP_SHARED, local_fd, OFFSET);
-		if (data == (caddr_t)(-1)) {
-			perror("mmap");
-			exit(1);
-		}
-
-		send_blocks(data);
-
-		if (close(local_fd) == -1) {
-			perror("close");
-			exit(1);
+	if(local_path!=NULL && mdfs_path!=NULL) {
+		if ((local_fd = open("/home/utnso/archivoBasura.dat", O_RDONLY)) != -1) {
+			/* probar TODO esto urgenchi;
+			fstat(local_fd, &file_stat);
+			data = mmap((caddr_t)0, file_stat.st_size, PROT_READ, MAP_SHARED, local_fd, OFFSET);
+			if (data == (caddr_t)(-1)) {
+				perror("mmap");
+				exit(1);
+			}
+			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
+			*/
+			if (close(local_fd) == -1) {
+				perror("close");
+				exit(1);
+			}
+			if(send_ok!=-1){
+				get_info_from_path(mdfs_path, &arch_name, &parent_dir);
+				if(parent_dir!=NULL) {
+					if(is_valid_arch_name(arch_name, parent_dir)) {
+						list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
+					} else {
+						printf("%s: no es un nombre valido\n",arch_name);
+						free(arch_name);
+					}
+				} else {
+					printf("%s: el directorio no existe\n",mdfs_path);
+					free(arch_name);
+				}
+			}
+		} else {
+			perror("Error abriendo el archivo");
 		}
 	} else {
-		perror("Error abriendo el archivo");
+		puts("upload: falta un operando");
 	}
-
 }
+
+//---------------------------------------------------------------------------
+
 
 //---------------------------------------------------------------------------
 void lsnode() {

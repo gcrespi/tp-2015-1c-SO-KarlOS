@@ -45,13 +45,13 @@ typedef struct {
 
 typedef struct {
 	int id_job;
-	int combiner;
+	uint32_t combiner;
 	char* path_result;
 	char** paths_files;
 } t_info_job;
 
 typedef struct {
-	int id_file;
+	uint32_t id_file;
 	t_kbitarray* bloques_mapeados;
 	pthread_mutex_t mutex;
 } t_info_file;
@@ -64,21 +64,34 @@ typedef struct {
 	int id_origen; //id del bloque del cual resulto o ids de los temp del que resulto
 } t_temp;
 
+typedef struct {
+	int socket;
+	pthread_mutex_t mutex;
+} t_conex_job;
+
+typedef struct {
+	uint32_t id_nodo;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
+	uint32_t block;
+} t_map_dest;
+
+typedef struct {
+	t_map_dest* map_dest;
+	t_conex_job* conex;
+} t_info_hilo_map;
 
 //************************* Estructura Por cada Map ************************
 typedef struct {
-
-
+	pthread_t thr;
+	t_info_file* file;
+	uint32_t block;
 } t_hilo_map;
 
 //************************* Estructura de Carga de los Nodos (GLOBAL) ************************
 typedef struct {
 	int id_nodo;
-	in_addr_t ip_nodo; //XXX ???
-	int puerto_nodo; //XXX ???
 	int cant_ops_en_curso;
-//	int cant_op_map_en_curso;
-//	int cant_op_reduce_en_curso;
 } t_nodo_carga;
 
 //************************ Prototipos ******************************
@@ -177,25 +190,20 @@ void free_info_job(t_info_job info_job) {
 //---------------------------------------------------------------------------
 int receive_info_job(t_hilo_job* job, t_info_job* info_job) {
 
-//	t_info_job info_job;
 	char* aux_paths_to_apply_files;
 	int result = 1;
 
 	info_job->id_job = increment_and_take_last_job_id();
-	log_debug(paranoid_log, "Info De Job: ID: %i", info_job->id_job);
 
-	result = (result > 0) ? recibir(job->sockfd, &(info_job->combiner)) : result;
+	result = (result > 0) ? receive_int_in_order(job->sockfd, &(info_job->combiner)) : result;
+	result = (result > 0) ? receive_dinamic_array_in_order(job->sockfd, (void **) &(aux_paths_to_apply_files)) : result;
+	result = (result > 0) ? receive_dinamic_array_in_order(job->sockfd, (void **) &(info_job->path_result)) : result;
+
+
 	if (result > 0) {
+		log_debug(paranoid_log, "Info De Job: ID: %i", info_job->id_job);
 		log_debug(paranoid_log, "Info De Job Recibida: Combiner: %i", info_job->combiner);
-	}
-
-	result = (result > 0) ? recibir_dinamic_buffer(job->sockfd, (void **) &(aux_paths_to_apply_files)) : result;
-	if (result > 0) {
 		log_debug(paranoid_log, "Info De Job Recibida: Archivos: %s", aux_paths_to_apply_files);
-	}
-
-	result = (result > 0) ? recibir_dinamic_buffer(job->sockfd, (void **) &(info_job->path_result)) : result;
-	if (result > 0) {
 		info_job->paths_files = string_split(aux_paths_to_apply_files, ",");
 		log_debug(paranoid_log, "Info De Job Recibida: Resultado: %s", info_job->path_result);
 	} else {
@@ -211,17 +219,16 @@ int receive_info_job(t_hilo_job* job, t_info_job* info_job) {
 //---------------------------------------------------------------------------
 int solicitar_info_de_archivo(char *path_file, t_info_file* info_file) {
 
-	int cant_bloques;
+	uint32_t cant_bloques;
 	int result = 1;
 
 	log_debug(paranoid_log, "Pidiendo info del file: %s", path_file);
 
 	sem_wait(&conex_fs_ready);
-	result = (result > 0) ? enviar_protocolo(socket_fs, INFO_ARCHIVO) : result;
+	result = send_protocol_in_order(socket_fs, INFO_ARCHIVO);
 
-	result = (result > 0) ? recibir(socket_fs, &(info_file->id_file)) : result;
-	result = (result > 0) ? recibir(socket_fs, &cant_bloques) : result;
-
+	result = (result > 0) ? receive_int_in_order(socket_fs, &(info_file->id_file)) : result;
+	result = (result > 0) ? receive_int_in_order(socket_fs, &cant_bloques) : result;
 	sem_post(&conex_fs_ready);
 
 	if (result <= 0) {
@@ -291,32 +298,160 @@ void free_hilos_map(t_temp* self) {
 
 }
 
+//---------------------------------------------------------------------------
+int locate_block_in_FS(uint32_t id_file, uint32_t block_number,t_list* posible_node_blocks) {
+
+	//TODO implementar
+
+	int i;
+	t_map_dest* map_dest;
+
+	for(i=0;i<3;i++) {
+		map_dest = malloc(sizeof(t_map_dest));
+
+		map_dest->id_nodo = i+1;
+		map_dest->ip_nodo = inet_addr("127.0.0.1");
+		map_dest->puerto_nodo = 6666+i;
+		map_dest->block = 10 - 2*i;
+
+		list_add(posible_node_blocks,map_dest);
+	}
+
+	return 1;
+}
+
 
 //---------------------------------------------------------------------------
-int plan_maps(t_info_job info_job,t_list* file_list, t_list* temp_list) {
+t_map_dest* planificar_map(int id_file,int block_number) {
+
+	//TODO implementar
+
+	t_map_dest* self;
+
+	t_list* posible_node_blocks = list_create();
+
+	int result = locate_block_in_FS(id_file, block_number,posible_node_blocks);
+
+	if(result <= 0) {
+		return NULL;
+	}
+
+	self = list_remove(posible_node_blocks,0);
+
+
+	list_destroy_and_destroy_elements(posible_node_blocks,(void *)free);
+
+	return self;
+}
+
+//---------------------------------------------------------------------------
+void mostrar_map_dest(t_map_dest* md) {
+
+	log_debug(paranoid_log,"Bloque seleccionado: ID: %i, IP: %i, Port: %i, Block: %i",md->id_nodo,md->ip_nodo,md->puerto_nodo,md->block);
+}
+
+
+//---------------------------------------------------------------------------
+void free_info_hilo_map(t_info_hilo_map* self) {
+	free(self->map_dest);
+	free(self);
+}
+
+//---------------------------------------------------------------------------
+int order_map_to_job(t_info_hilo_map* info) {
+
+	int result;
+	t_buffer* map_order = buffer_create_with_protocol(ORDER_MAP);
+
+	buffer_add_int(map_order, info->map_dest->id_nodo);
+	buffer_add_int(map_order, info->map_dest->ip_nodo);
+	buffer_add_int(map_order, info->map_dest->puerto_nodo);
+	buffer_add_int(map_order, info->map_dest->block);
+
+	pthread_mutex_lock(&(info->conex->mutex));
+	result = send_buffer_and_destroy(info->conex->socket,map_order);
+	pthread_mutex_unlock(&(info->conex->mutex));
+
+	result = (result > 0) ? receive_protocol_in_order(info->conex->socket) : result;
+
+	free_info_hilo_map(info);
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int plan_maps(t_info_job info_job,t_list* file_list, t_list* temp_list, t_conex_job conex) {
 
 	t_list* hilos_map = list_create();
+	t_hilo_map* hilo_map;
+	t_map_dest* map_dest;
 	int result = 1;
 
+	t_info_hilo_map* info_hilo_map;
+
 	off_t block_without_map;
-	int file_without_map;
+	t_info_file* file_without_map;
+
 
 	int _find_block_without_map_and_lock_it(t_info_file* info_file) {
 
 		pthread_mutex_lock(&(info_file->mutex));
 		block_without_map = kbitarray_find_first_clean(info_file->bloques_mapeados);
 		kbitarray_set_bit(info_file->bloques_mapeados,block_without_map);
-		file_without_map = info_file->id_file;
+		file_without_map = info_file;
 		pthread_mutex_unlock(&(info_file->mutex));
 		return (block_without_map != -1);
-
 	}
 
 	while((list_find(file_list,(void *)_find_block_without_map_and_lock_it) != NULL) && (result > 0)) {
-//		log_info(paranoid_log,"Planificando map del Archivo:%i Bloque: %i ",file_without_map,block_without_map);
+		log_info(paranoid_log,"Planificando map del Archivo:%i Bloque: %i ",file_without_map->id_file,block_without_map);
+		map_dest = planificar_map(file_without_map->id_file,block_without_map);
+
+		if(map_dest != NULL)
+		{	mostrar_map_dest(map_dest);
+
+			hilo_map = malloc(sizeof(t_hilo_map));
+			hilo_map->file = file_without_map;
+			hilo_map->block = block_without_map;
+
+			list_add(hilos_map,hilo_map);
+
+			info_hilo_map = malloc(sizeof(t_info_hilo_map));
+			info_hilo_map->conex = &conex;
+			info_hilo_map->map_dest = map_dest;
+
+			log_info(paranoid_log, "Creación de Hilo Map");
+			if (pthread_create(&(hilo_map->thr), NULL, (void *) order_map_to_job, info_hilo_map) != 0) {
+				log_error(paranoid_log, "No se pudo crear Hilo Map");
+				exit(-1);
+			}
+		} else {
+			pthread_mutex_lock(&(file_without_map->mutex));
+			kbitarray_clean_bit(file_without_map->bloques_mapeados,block_without_map);
+			pthread_mutex_unlock(&(file_without_map->mutex));
+		}
+
 	}
 
-	//TODO por acá dejé, hay que evaluar que tan conveniente sería tener hilos por cada rutina de map planificada
+//	XXX Here be Dragons.
+	void _esperar_finalizacion_hilo_map(t_hilo_map* hilo) {
+		int ret_recep;
+
+		if (pthread_join((hilo->thr),(void **) &ret_recep) != 0) {
+			log_error(paranoid_log,"Error al hacer join del hilo Map\n");
+		} else {
+//			if(ret_recep != MAP_OK) {
+//				pthread_mutex_lock(&(hilo->file->mutex));
+//				kbitarray_clean_bit(hilo->file->bloques_mapeados,hilo->block);
+//				pthread_mutex_unlock(&(hilo->file->mutex));
+//			}
+		}
+	}
+
+//	list_iterate(hilos_map, (void *) _esperar_finalizacion_hilo_map);
+
+	sleep(10);
+
+//TODO recolectar hilos
 
 
 	list_destroy_and_destroy_elements(hilos_map,(void *)free_hilos_map);
@@ -342,6 +477,10 @@ void hilo_conex_job(t_hilo_job *job) {
 	t_info_job info_job;
 	t_list* file_list = list_create();
 	t_list* temp_list = list_create();
+	t_conex_job conex;
+
+	conex.socket = job->sockfd;
+	pthread_mutex_init(&(conex.mutex),NULL);
 
 	int result = 0;
 
@@ -349,7 +488,7 @@ void hilo_conex_job(t_hilo_job *job) {
 
 	log_info(paranoid_log, "Comienzo Hilo Job");
 
-	uint32_t prot = recibir_protocolo(job->sockfd);
+	uint32_t prot = receive_protocol_in_order(job->sockfd);
 
 	switch (prot) {
 
@@ -358,7 +497,7 @@ void hilo_conex_job(t_hilo_job *job) {
 		result = 1;
 		result = (result > 0) ? receive_info_job(job, &info_job) : result;
 		result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
-		result = (result > 0) ? plan_maps(info_job,file_list,temp_list) : result;
+		result = (result > 0) ? plan_maps(info_job,file_list,temp_list,conex) : result;
 		result = (result > 0) ? plan_reduces() : result;
 		result = (result > 0) ? save_result_file_in_MDFS() : result;
 
@@ -383,10 +522,10 @@ void hilo_conex_job(t_hilo_job *job) {
 	}
 
 	if (result > 0) {
-		enviar_protocolo(job->sockfd, FINISHED_JOB);
+		send_protocol_in_order(job->sockfd, FINISHED_JOB);
 		log_info(paranoid_log, "Finalizado con éxito Job IP: %s, Puerto: %i", ip_job, port_job);
 	} else {
-		enviar_protocolo(job->sockfd, ABORTED_JOB);
+		send_protocol_in_order(job->sockfd, ABORTED_JOB);
 		log_error(paranoid_log, "No se pudo realizar el Job IP: %s, Puerto: %i", ip_job, port_job);
 	}
 

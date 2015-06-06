@@ -43,6 +43,13 @@ typedef struct {
 	char* path_result_file;
 }info_new_job;
 
+typedef struct {
+	uint32_t id_nodo;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
+	uint32_t block;
+} t_map_dest;
+
 void levantar_arch_conf_job(conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
 void free_conf_job(conf_job* conf);
 int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job);
@@ -81,17 +88,27 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 
 	uint32_t prot;
 	int finished = 0, error = 0;
+	t_map_dest map_dest;
 
 	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
 	while ((!finished) && (!error)) {
 
-		prot = recibir_protocolo(socket);
+		prot = receive_protocol_in_order(socket);
 
 		switch (prot) {
 
 		case ORDER_MAP:
-			//abrir hilo de map
+			//TODO abrir hilo de map
+
+			receive_int_in_order(socket,&(map_dest.id_nodo));
+			receive_int_in_order(socket,&(map_dest.ip_nodo));
+			receive_int_in_order(socket,&(map_dest.puerto_nodo));
+			receive_int_in_order(socket,&(map_dest.block));
+
+			log_info(paranoid_log,"Realizando Operación de Map en Nodo: %i, IP: %i, Port: %i, Block: %i",map_dest.id_nodo,map_dest.ip_nodo,map_dest.puerto_nodo,map_dest.block);
+
+			send_protocol_in_order(socket,MAP_OK);
 			break;
 
 		case ORDER_REDUCE:
@@ -130,14 +147,17 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job) {
 
 	int result = 0;
+	t_buffer* new_job_buff;
 
 	log_debug(paranoid_log, "Enviando Target del Job");
 
-	result = (result != -1) ? enviar_protocolo(socket, NUEVO_JOB) : result;
+	new_job_buff = buffer_create_with_protocol(NUEVO_JOB);
 
-	result = (result != -1) ? enviar_int(socket, info_job.combiner) : result;
-	result = (result != -1) ? enviar_string(socket, info_job.paths_to_apply_files) : result;
-	result = (result != -1) ? enviar_string(socket, info_job.path_result_file) : result;
+	buffer_add_int(new_job_buff, info_job.combiner);
+	buffer_add_string(new_job_buff, info_job.paths_to_apply_files);
+	buffer_add_string(new_job_buff, info_job.path_result_file);
+
+	result = send_buffer_and_destroy(socket,new_job_buff);
 
 	if (result == -1) {
 		log_error(paranoid_log, "No se pudo enviar Target del Job");

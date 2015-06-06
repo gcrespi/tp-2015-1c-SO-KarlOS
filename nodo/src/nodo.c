@@ -74,6 +74,7 @@ sem_t semaforo1;
 sem_t semaforo2;
 pthread_t thread1, thread2, thread3;
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 
 //Main
 int main(void) {
@@ -184,7 +185,9 @@ int enviar_bloque(int socket) {
 	int result = 1;
     int nroBloque;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		pthread_mutex_lock(&mutex2);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
+		pthread_mutex_unlock(&mutex2);
 		return result;
 }
 //---------------------------------------------------------------------------

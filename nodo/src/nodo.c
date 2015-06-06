@@ -25,6 +25,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include "../../connectionlib/connectionlib.h"
 
 // Estructuras
@@ -50,7 +52,6 @@ struct conf_nodo {
 
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
-
 char *data; // data del archivo mapeado
 #define block_size 4*1024 // tamaño de cada bloque del dat
 
@@ -67,11 +68,34 @@ void cargarBloque(int, char*, int);
 void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int);
 int recibir_Bloque(int);
+int enviar_bloque(int);
+
+sem_t semaforo1;
+sem_t semaforo2;
+pthread_t thread1, thread2, thread3;
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *mutex;
+
 //Main
 int main(void) {
 	int socket_fs; // file descriptor del FS
 
+	if((sem_init(&semaforo1, 0, 1))==-1){
+			perror("semaphore");
+			exit(1);
+		}
+	//	if((sem_init(&semaforo2, 0, 0))==-1){
+	//		perror("semaphore");
+	//		exit(1);
+	//	}
+
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
+
+    /*if ((pthread_create( &thread1, NULL,(void *)levantar_arch_conf_nodo, NULL))== -1){
+			perror("fallo en el:thread 1");
+			exit(1);
+	}*/
 
 	levantar_arch_conf_nodo();
 
@@ -89,13 +113,18 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	mapearArchivo();// asas
+	mapearArchivo();
 
-	esperar_instrucciones_del_filesystem(socket_fs);
+	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
+			perror("fallo en el: thread 2");
+			exit(1);
+	}
 
-
+	//esperar_instrucciones_del_filesystem(socket_fs);
 
 	free_conf_nodo();
+
+	pthread_join(thread2, NULL);
 
 	log_destroy(logger);
 	return EXIT_SUCCESS;
@@ -108,19 +137,35 @@ int esperar_instrucciones_del_filesystem(int socket){
 	uint32_t tarea;
 	tarea = recibir_protocolo(socket);
 
-	switch (tarea) {
+    while(tarea != DISCONNECTED){
+
+
+	    switch (tarea) {
+
 		case WRITE_BLOCK:
-			recibir_Bloque(socket);
+			if (recibir_Bloque(socket) <=0) {
+				log_error(logger, "no se pudo cargar el bloque");
+			}
+			else {
+					log_info(logger, "Se cargo correctamente el bloque al nodo");
+				}
 			break;
+
+		case READ_BLOCK:
+			if (enviar_bloque(socket) <=0){
+				log_error(logger, "no se pudo enviar el bloque");
+			}
+			else {
+					log_info(logger, "Se envio correctamente el bloque al MDFs");
+				}
+			break;
+
 		default:
 			return -1;
 		}
-		//case ESCRIBIR_BLOCK -> recibir num bloque e info
-		//recibir(socket_fs,data[offset]);
-
-		//case LEER_BLOCK -> recibir num bloque
-		//enviar_string(socket_fs,data[offset]);
+    }
 	return tarea;
+
 
 }
 
@@ -130,11 +175,27 @@ int recibir_Bloque(int socket) {
 
 	int result = 1;
     int nroBloque;
+    int longInfo;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		result = (result > 0) ? recibir(socket, &data[nroBloque*block_size]) : result;
+		pthread_mutex_lock( &mutex[nroBloque] );
+		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
+		data[nroBloque*block_size + longInfo]='\0';
+		pthread_mutex_unlock( &mutex[nroBloque] );
 		return result;
 }
 
+//---------------------------------------------------------------------------
+
+int enviar_bloque(int socket) {
+
+	int result = 1;
+    int nroBloque;
+		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		pthread_mutex_lock(&mutex[nroBloque]);
+		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
+		pthread_mutex_unlock(&mutex[nroBloque]);
+		return result;
+}
 //---------------------------------------------------------------------------
 
 void levantar_arch_conf_nodo() {
@@ -148,13 +209,10 @@ void levantar_arch_conf_nodo() {
 		conf.id = config_get_int_value(conf_arch, properties[0]);
 		conf.ip_fs = strdup(config_get_string_value(conf_arch, properties[1]));
 		conf.puerto_fs = config_get_int_value(conf_arch, properties[2]);
-		conf.archivo_bin = strdup(
-				config_get_string_value(conf_arch, properties[3]));
-		conf.dir_temp = strdup(
-				config_get_string_value(conf_arch, properties[4]));
+		conf.archivo_bin = strdup(config_get_string_value(conf_arch, properties[3]));
+		conf.dir_temp = strdup(config_get_string_value(conf_arch, properties[4]));
 		conf.nodo_nuevo = config_get_int_value(conf_arch, properties[5]);
-		conf.ip_nodo = strdup(
-				config_get_string_value(conf_arch, properties[6]));
+		conf.ip_nodo = strdup(config_get_string_value(conf_arch, properties[6]));
 		conf.puerto_nodo = config_get_int_value(conf_arch, properties[7]);
 		conf.cant_bloques = config_get_int_value(conf_arch, properties[8]);
 	} else {
@@ -202,8 +260,7 @@ int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 
 	result = (result > 0) ? enviar_protocolo(socket, INFO_NODO) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
-	result =
-			(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
+	result =(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
 
 	return result;
@@ -232,7 +289,7 @@ void mapearArchivo() {
 	if (fstat(fd, &sbuf) == -1) {
 		perror("fstat()");
 	}
-
+    sem_wait(&semaforo1);
 	data = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			fd, 0);
 
@@ -240,6 +297,7 @@ void mapearArchivo() {
 		perror("mmap");
 		exit(1);
 	}
+	sem_post(&semaforo1);
 }
 //---------------------------------------------------------------------------
 void cargarBloque(int nroBloque, char* info, int offset_byte) {

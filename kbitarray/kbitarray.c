@@ -145,7 +145,7 @@ off_t kbitarray_find_first_set(t_kbitarray* self) {
 
 	off_t char_index;
 
-	if ((char_index = kbitarray_find_first_char_not_clean(self)) != -1)
+	if ((char_index = kbitarray_find_first_char_not_clean(self)) == -1)
 		return -1;
 
 	char_index *= CHAR_BIT;
@@ -164,7 +164,7 @@ off_t kbitarray_find_first_clean(t_kbitarray* self) {
 
 	off_t char_index;
 
-	if ((char_index = kbitarray_find_first_char_not_set(self)) != -1)
+	if ((char_index = kbitarray_find_first_char_not_set(self)) == -1)
 		return -1;
 
 	char_index *= CHAR_BIT;

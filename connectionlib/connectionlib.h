@@ -8,8 +8,10 @@
 #ifndef CONNECTIONLIB_H_
 #define CONNECTIONLIB_H_
 
-#include <commons/bitarray.h>
-
+#include <commons/config.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <arpa/inet.h>
 
 typedef struct {
 	char *buffer;
@@ -19,14 +21,21 @@ typedef struct {
 
 //Enum del protocolo
 enum protocolo {
-	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO, FINISHED_JOB, ABORTED_JOB , WRITE_BLOCK
+	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO, FINISHED_JOB, ABORTED_JOB, WRITE_BLOCK, READ_BLOCK, MAP_OK
 };
 
+t_buffer* buffer_create();
 t_buffer* buffer_create_with_protocol(uint32_t protocolo);
 void buffer_add_string(t_buffer* self, char *string_to_add);
 void buffer_add_int(t_buffer* self, uint32_t int_to_add);
+int send_protocol_in_order(int socket, uint32_t protocol);
 int send_buffer_and_destroy(int socket, t_buffer* self);
 void buffer_destroy(t_buffer* self);
+
+int receive_dinamic_array_in_order(int socket, void** buffer);
+int receive_static_array_in_order(int socket, void *buffer);
+int receive_int_in_order(int socket, uint32_t *number);
+uint32_t receive_protocol_in_order(int socket);
 
 
 uint32_t recibir_protocolo(int socket);
@@ -34,6 +43,7 @@ int enviar_protocolo(int socket, uint32_t protocolo);
 int enviar_string(int socket, char *string);
 int enviar_int(int socket, uint32_t numero);
 
+int enviar_without_size(int socket, void *buffer, uint32_t size_buffer);
 int enviar(int socket, void *buffer, uint32_t size_buffer);
 int recibir(int socket, void *buffer);
 int recibir_dinamic_buffer(int socket, void** buffer);

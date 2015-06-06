@@ -78,6 +78,15 @@ pthread_t thread1, thread2, thread3;
 int main(void) {
 	int socket_fs; // file descriptor del FS
 
+	//if((sem_init(&semaforo1, 0, 1))==-1){
+	//		perror("semaphore");
+	//		exit(1);
+	//	}
+	//	if((sem_init(&semaforo2, 0, 0))==-1){
+	//		perror("semaphore");
+	//		exit(1);
+	//	}
+
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
 	levantar_arch_conf_nodo();
@@ -98,9 +107,16 @@ int main(void) {
 
 	mapearArchivo();
 
-	esperar_instrucciones_del_filesystem(socket_fs);
+	if ((pthread_create( &thread1, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
+			perror("thread 1");
+			exit(1);
+	}
+
+	//esperar_instrucciones_del_filesystem(socket_fs);
 
 	free_conf_nodo();
+
+	pthread_join(thread1, NULL);
 
 	log_destroy(logger);
 	return EXIT_SUCCESS;

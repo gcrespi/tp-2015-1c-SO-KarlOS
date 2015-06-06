@@ -50,9 +50,8 @@ struct conf_nodo {
 
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
-
 char *data; // data del archivo mapeado
-#define block_size 4*1024 // tamaño de cada bloque
+#define block_size 4*1024 // tamaño de cada bloque del dat
 
 t_log* logger;
 
@@ -65,7 +64,9 @@ void free_conf_nodo();
 void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
-
+int esperar_instrucciones_del_filesystem(int);
+int recibir_Bloque(int);
+int enviar_bloque(int);
 //Main
 int main(void) {
 	int socket_fs; // file descriptor del FS
@@ -88,13 +89,9 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	//esperar_instrucciones_del_filesystem()
-		//recibir_protocolo()
-		//case ESCRIBIR_BLOCK -> recibir num bloque e info
-		//recibir(socket_fs,data[offset]);
+	mapearArchivo();
 
-		//case LEER_BLOCK -> recibir num bloque
-		//enviar_string(socket_fs,data[offset]);
+	esperar_instrucciones_del_filesystem(socket_fs);
 
 	free_conf_nodo();
 
@@ -103,6 +100,64 @@ int main(void) {
 }
 
 //---------------------------------------------------------------------------
+
+int esperar_instrucciones_del_filesystem(int socket){
+
+	uint32_t tarea;
+	tarea = recibir_protocolo(socket);
+
+	switch (tarea) {
+		case WRITE_BLOCK:
+			if (recibir_Bloque(socket) <=0) {
+				log_error(logger, "no se pudo cargar el bloque");
+			}
+			else {
+					log_info(logger, "Se cargo correctamente el bloque al nodo");
+				}
+			break;
+
+		case READ_BLOCK:
+			if (enviar_bloque(socket) <=0){
+				log_error(logger, "no se pudo enviar el bloque");
+			}
+			else {
+					log_info(logger, "Se envio correctamente el bloque al MDFs");
+				}
+			break;
+
+		default:
+			return -1;
+		}
+
+	return tarea;
+
+}
+
+//---------------------------------------------------------------------------
+
+int recibir_Bloque(int socket) {
+
+	int result = 1;
+    int nroBloque;
+    int longInfo;
+		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
+		data[nroBloque*block_size + longInfo]='\0';
+		return result;
+}
+
+//---------------------------------------------------------------------------
+
+int enviar_bloque(int socket) {
+
+	int result = 1;
+    int nroBloque;
+		result = (result > 0) ? recibir(socket, &nroBloque) : result;
+		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
+		return result;
+}
+//---------------------------------------------------------------------------
+
 void levantar_arch_conf_nodo() {
 	char** properties =
 			string_split(
@@ -168,8 +223,7 @@ int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 
 	result = (result > 0) ? enviar_protocolo(socket, INFO_NODO) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
-	result =
-			(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
+	result =(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
 
 	return result;

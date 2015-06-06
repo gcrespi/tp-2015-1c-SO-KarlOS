@@ -25,6 +25,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include "../../connectionlib/connectionlib.h"
 
 // Estructuras
@@ -67,6 +69,11 @@ void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int);
 int recibir_Bloque(int);
 int enviar_bloque(int);
+
+sem_t semaforo1;
+sem_t semaforo2;
+pthread_t thread1, thread2, thread3;
+
 //Main
 int main(void) {
 	int socket_fs; // file descriptor del FS

@@ -24,20 +24,49 @@
 #define BACKLOG 5
 
 
-//********************************XXX TESTME XXX******************************* //ROMPE TODO
+//---------------------------------------------------------------------------
+t_buffer* buffer_create() {
+	t_buffer* self;
+	self = malloc(sizeof(t_buffer));
+	self->buffer = NULL;
+	self->size = 0;
+
+	return self;
+}
+
 
 //---------------------------------------------------------------------------
 t_buffer* buffer_create_with_protocol(uint32_t protocolo) {
-	t_buffer* self;
-	self = malloc(sizeof(t_buffer));
-	self->buffer = malloc(sizeof(uint32_t));
-	self->size = sizeof(uint32_t);
 
-	uint32_t nprotocol = htonl(protocolo);
+	t_buffer* self = buffer_create();
 
-	memcpy(self->buffer,&nprotocol,sizeof(uint32_t));
-
+	buffer_add_int(self,protocolo);
 	return self;
+}
+
+//---------------------------------------------------------------------------
+void buffer_add_string(t_buffer* self, char *string_to_add) {
+	uint32_t size_string = strlen(string_to_add) + 1;
+	buffer_add_int(self,size_string);
+
+	off_t offset_to_write = self->size;
+
+	self->size += size_string;
+	self->buffer = realloc(self->buffer, self->size);
+
+	memcpy((self->buffer + offset_to_write), string_to_add, size_string);
+}
+
+//---------------------------------------------------------------------------
+void buffer_add_int(t_buffer* self, uint32_t int_to_add) {
+
+	off_t offset_to_write = self->size;
+
+	self->size += sizeof(uint32_t);
+	self->buffer = realloc(self->buffer, self->size);
+
+	int_to_add = htonl(int_to_add);
+	memcpy((self->buffer + offset_to_write), &int_to_add, sizeof(uint32_t));
 }
 
 //---------------------------------------------------------------------------
@@ -46,43 +75,116 @@ void buffer_destroy(t_buffer* self) {
 	free(self);
 }
 
-//---------------------------------------------------------------------------
-void buffer_add_string(t_buffer* self, char *string_to_add) {
-	uint32_t length_string = htonl(strlen(string_to_add) + 1);
-	off_t offset_to_write = self->size;
-
-	self->size += sizeof(uint32_t) + strlen(string_to_add) + 1;
-	self->buffer = realloc(self->buffer, self->size);
-
-	memcpy((self->buffer + offset_to_write), &length_string, sizeof(uint32_t));
-	offset_to_write += sizeof(uint32_t);
-
-	memcpy((self->buffer + offset_to_write), string_to_add, length_string + 1);
-}
 
 //---------------------------------------------------------------------------
-void buffer_add_int(t_buffer* self, uint32_t int_to_add) {
-	uint32_t nint_to_add = htonl(int_to_add);
-	uint32_t length_int = htonl(sizeof(uint32_t));
-	off_t offset_to_write = self->size;
-
-	self->size += sizeof(uint32_t) + sizeof(uint32_t);
-	self->buffer = realloc(self->buffer, self->size);
-
-	memcpy((self->buffer + offset_to_write), &length_int, sizeof(uint32_t));
-	offset_to_write += sizeof(uint32_t);
-
-	memcpy((self->buffer + offset_to_write), &int_to_add, sizeof(uint32_t));
+int send_buffer(int socket, t_buffer* self) {
+	return enviar_without_size(socket, self->buffer, self->size);
 }
 
 //---------------------------------------------------------------------------
 int send_buffer_and_destroy(int socket, t_buffer* self) {
-	int result = enviar(socket, self->buffer, self->size);
+	int result = send_buffer(socket, self);
 	buffer_destroy(self);
 
 	return result;
 }
+
+//---------------------------------------------------------------------------
+int send_protocol_in_order(int socket, uint32_t protocol) {
+	protocol = htonl(protocol);
+	return enviar_without_size(socket,&protocol,sizeof(uint32_t));
+}
+
+//---------------------------------------------------------------------------
+int receive_dinamic_array_in_order(int socket, void** buffer) {
+	uint32_t size_received = 0;
+	uint32_t receiving;
+
+	uint32_t size_buffer;
+
+	*buffer = malloc(sizeof(char)); //para que se tome en cuenta de que cada vez que esta funcion es llamada hace un malloc
+
+	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
+		mostrar_error(-1, "Error reciving");
+		return -1;
+	}
+
+	if (receiving == 0) {
+		return 0;
+	}
+
+	size_buffer = ntohl(size_buffer);
+
+	free(*buffer);
+	*buffer = malloc(size_buffer);
+
+	while (size_received < size_buffer) {
+
+		if ((receiving = recv(socket, ((*buffer) + size_received), (size_buffer - size_received), 0)) == -1) {
+			mostrar_error(-1, "Error receiving");
+			return -1;
+		}
+
+		if (receiving == 0) {
+			return 0;
+		}
+
+		size_received += receiving;
+	}
+	return size_received;
+}
+
+//---------------------------------------------------------------------------
+int receive_static_array_in_order(int socket, void *buffer) {
+
+	void* aux_buffer;
+
+	int result = receive_dinamic_array_in_order(socket, &aux_buffer);
+
+	if (result > 0) {
+		memcpy(buffer, aux_buffer, result);
+	}
+
+	free(aux_buffer);
+	return result;
+}
+
+
+
+//---------------------------------------------------------------------------
+int receive_int_in_order(int socket, uint32_t *number) {
+
+	int result;
+
+	if ((result = recv(socket, number, sizeof(uint32_t), 0)) == -1) {
+		mostrar_error(-1, "Error recieving");
+		return -1;
+	}
+
+	*number = ntohl(*number);
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+uint32_t receive_protocol_in_order(int socket) {
+	uint32_t prot;
+
+	int result = receive_int_in_order(socket,&prot);
+
+	if (result == 0)
+		return DISCONNECTED;
+
+	if (result == -1)
+		return -1;
+
+	return prot;
+}
+
+
+
 //********************************XXX TESTME XXX*******************************
+
 
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {
@@ -199,12 +301,7 @@ int enviar_string(int socket, char *string) {
 }
 
 //---------------------------------------------------------------------------
-int enviar(int socket, void *buffer, uint32_t size_buffer) {
-
-	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
-		mostrar_error(-1, "Error sending");
-		return -1;
-	}
+int enviar_without_size(int socket, void *buffer, uint32_t size_buffer) {
 
 	//TODO TESTME
 	uint32_t size_sended = 0;
@@ -220,6 +317,18 @@ int enviar(int socket, void *buffer, uint32_t size_buffer) {
 	}
 
 	return size_sended;
+
+}
+
+//---------------------------------------------------------------------------
+int enviar(int socket, void *buffer, uint32_t size_buffer) {
+
+	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
+		mostrar_error(-1, "Error sending");
+		return -1;
+	}
+
+	return enviar_without_size(socket,buffer,size_buffer);
 }
 
 //---------------------------------------------------------------------------

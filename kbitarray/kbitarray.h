@@ -18,7 +18,7 @@
 #include <unistd.h>
 
 #define CHAR_CLEAN 	0
-#define CHAR_SET 	UCHAR_MAX
+#define CHAR_SET 	-1
 
 typedef struct {
 	char *bitarray;

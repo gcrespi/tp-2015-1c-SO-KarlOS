@@ -75,6 +75,7 @@ sem_t semaforo2;
 pthread_t thread1, thread2, thread3;
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *mutex;
 
 //Main
 int main(void) {
@@ -136,7 +137,11 @@ int esperar_instrucciones_del_filesystem(int socket){
 	uint32_t tarea;
 	tarea = recibir_protocolo(socket);
 
-	switch (tarea) {
+    while(tarea != DISCONNECTED){
+
+
+	    switch (tarea) {
+
 		case WRITE_BLOCK:
 			if (recibir_Bloque(socket) <=0) {
 				log_error(logger, "no se pudo cargar el bloque");
@@ -158,8 +163,9 @@ int esperar_instrucciones_del_filesystem(int socket){
 		default:
 			return -1;
 		}
-
+    }
 	return tarea;
+
 
 }
 
@@ -171,10 +177,10 @@ int recibir_Bloque(int socket) {
     int nroBloque;
     int longInfo;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock( &mutex1 );
+		pthread_mutex_lock( &mutex[nroBloque] );
 		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
 		data[nroBloque*block_size + longInfo]='\0';
-		pthread_mutex_unlock( &mutex1 );
+		pthread_mutex_unlock( &mutex[nroBloque] );
 		return result;
 }
 
@@ -185,9 +191,9 @@ int enviar_bloque(int socket) {
 	int result = 1;
     int nroBloque;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock(&mutex2);
+		pthread_mutex_lock(&mutex[nroBloque]);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
-		pthread_mutex_unlock(&mutex2);
+		pthread_mutex_unlock(&mutex[nroBloque]);
 		return result;
 }
 //---------------------------------------------------------------------------

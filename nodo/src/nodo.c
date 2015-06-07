@@ -55,6 +55,12 @@ struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
 #define block_size 4*1024 // tamaño de cada bloque del dat
 t_log* logger;
+sem_t semaforo1;
+sem_t semaforo2;
+pthread_t thread1, thread2, thread3;
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *mutex;
 
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
@@ -65,17 +71,10 @@ void free_conf_nodo();
 void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
-int esperar_instrucciones_del_filesystem(int);
+int esperar_instrucciones_del_filesystem(int*);
 int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
-
-sem_t semaforo1;
-sem_t semaforo2;
-pthread_t thread1, thread2, thread3;
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t *mutex;
 
 //Main
 int main(void) {
@@ -85,17 +84,8 @@ int main(void) {
 			perror("semaphore");
 			exit(1);
 		}
-	//	if((sem_init(&semaforo2, 0, 0))==-1){
-	//		perror("semaphore");
-	//		exit(1);
-	//	}
 
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
-
-    /*if ((pthread_create( &thread1, NULL,(void *)levantar_arch_conf_nodo, NULL))== -1){
-			perror("fallo en el:thread 1");
-			exit(1);
-	}*/
 
 	levantar_arch_conf_nodo();
 
@@ -116,12 +106,12 @@ int main(void) {
 	mapearArchivo();
 
 
-	/*if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
+	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
 			perror("fallo en el: thread 2");
 			exit(1);
-	}*/
+	}
 
-	esperar_instrucciones_del_filesystem(socket_fs);
+	//esperar_instrucciones_del_filesystem(socket_fs);
 
 
 	//esperar_instrucciones_job();
@@ -154,17 +144,17 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 
 //---------------------------------------------------------------------------
 
-int esperar_instrucciones_del_filesystem(int socket){
+int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
-	tarea = recibir_protocolo(socket);
+	tarea = recibir_protocolo(*socket);
 
     while(tarea != DISCONNECTED){
 
 	    switch (tarea) {
 
 		case WRITE_BLOCK:
-			if (recibir_Bloque(socket) <=0) {
+			if (recibir_Bloque(*socket) <=0) {
 				log_error(logger, "no se pudo cargar el bloque");
 			}
 			else {
@@ -173,7 +163,7 @@ int esperar_instrucciones_del_filesystem(int socket){
 			break;
 
 		case READ_BLOCK:
-			if (enviar_bloque(socket) <=0){
+			if (enviar_bloque(*socket) <=0){
 				log_error(logger, "no se pudo enviar el bloque");
 			}
 			else {

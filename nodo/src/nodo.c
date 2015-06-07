@@ -54,7 +54,6 @@ struct conf_nodo {
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
 #define block_size 4*1024 // tamaño de cada bloque del dat
-
 t_log* logger;
 
 //Prototipos
@@ -67,6 +66,7 @@ void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int);
+int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
 
@@ -102,8 +102,8 @@ int main(void) {
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-//	solicitarConexionConFS(&socketaddr_fs,&info_envio);
-	socket_fs = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
+	//socket_fs = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
+    socket_fs = solicitarConexionConFileSystem(conf);
 
 	log_debug(logger,"id: %i",info_envio.cant_bloques);
 
@@ -115,12 +115,16 @@ int main(void) {
 
 	mapearArchivo();
 
-	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
+
+	/*if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
 			perror("fallo en el: thread 2");
 			exit(1);
-	}
+	}*/
 
-	//esperar_instrucciones_del_filesystem(socket_fs);
+	esperar_instrucciones_del_filesystem(socket_fs);
+
+
+	//esperar_instrucciones_job();
 
 	free_conf_nodo();
 
@@ -132,13 +136,30 @@ int main(void) {
 
 //---------------------------------------------------------------------------
 
+int solicitarConexionConFileSystem(struct conf_nodo conf) {
+
+	log_debug(logger, "Solicitando conexión con MDFS...");
+	int socketFS = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
+
+	if (socketFS != -1) {
+		log_info(logger, "Conexión con MDFS establecida IP: %s, Puerto: %i", conf.ip_fs, conf.puerto_fs);
+	} else {
+		log_error(logger, "Conexión con MDFS FALLIDA!!! IP: %s, Puerto: %i", conf.ip_fs, conf.puerto_fs);
+		exit(-1);
+	}
+
+	return socketFS;
+}
+
+
+//---------------------------------------------------------------------------
+
 int esperar_instrucciones_del_filesystem(int socket){
 
 	uint32_t tarea;
 	tarea = recibir_protocolo(socket);
 
     while(tarea != DISCONNECTED){
-
 
 	    switch (tarea) {
 
@@ -290,7 +311,7 @@ void mapearArchivo() {
 	if (fstat(fd, &sbuf) == -1) {
 		perror("fstat()");
 	}
-    sem_wait(&semaforo1);
+   sem_wait(&semaforo1);
 	data = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			fd, 0);
 

@@ -92,10 +92,11 @@ int main(void) {
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-	//socket_fs = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
     socket_fs = solicitarConexionConFileSystem(conf);
 
-	log_debug(logger,"id: %i",info_envio.cant_bloques);
+    mapearArchivo();
+
+	//log_debug(logger,"id: %i",info_envio.cant_bloques);
 
 	if (enviar_info_nodo(socket_fs, &info_envio) <= 0) {
 		log_error(logger, "no se pudo enviar el info nodo");
@@ -103,11 +104,9 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	mapearArchivo();
-
 
 	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
-			perror("fallo en el: thread 2");
+		perror("fallo en el: thread 2");
 			exit(1);
 	}
 
@@ -119,7 +118,6 @@ int main(void) {
 	free_conf_nodo();
 
 	pthread_join(thread2, NULL);
-
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
@@ -147,6 +145,7 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
+	log_info(logger, "Esperando Instruccion FS");
 	tarea = recibir_protocolo(*socket);
 
     while(tarea != DISCONNECTED){
@@ -293,6 +292,8 @@ void mapearArchivo() {
 	struct stat sbuf;
 	char* path = conf.archivo_bin;
 
+	log_info(logger, "inicio de mapeo");
+
 	if ((fd = open(path, O_RDWR)) == -1) {
 		perror("open()");
 		exit(1);
@@ -310,6 +311,7 @@ void mapearArchivo() {
 		exit(1);
 	}
 	sem_post(&semaforo1);
+	log_info(logger,"mapeo correcto");
 }
 //---------------------------------------------------------------------------
 void cargarBloque(int nroBloque, char* info, int offset_byte) {

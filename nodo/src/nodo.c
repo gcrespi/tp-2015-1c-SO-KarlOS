@@ -262,7 +262,8 @@ int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
 	result =(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
-
+	result = (result > 0) ? enviar_string(socket, conf.ip_nodo) : result;
+	result = (result > 0) ? enviar_int(socket, conf.puerto_nodo) : result;
 	return result;
 }
 

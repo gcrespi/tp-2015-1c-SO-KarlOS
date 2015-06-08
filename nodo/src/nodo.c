@@ -54,8 +54,13 @@ struct conf_nodo {
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
 #define block_size 4*1024 // tamaño de cada bloque del dat
-
 t_log* logger;
+sem_t semaforo1;
+sem_t semaforo2;
+pthread_t thread1, thread2, thread3;
+pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *mutex;
 
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
@@ -66,16 +71,10 @@ void free_conf_nodo();
 void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
-int esperar_instrucciones_del_filesystem(int);
+int esperar_instrucciones_del_filesystem(int*);
+int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
-
-sem_t semaforo1;
-sem_t semaforo2;
-pthread_t thread1, thread2, thread3;
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t *mutex;
 
 //Main
 int main(void) {
@@ -85,27 +84,19 @@ int main(void) {
 			perror("semaphore");
 			exit(1);
 		}
-	//	if((sem_init(&semaforo2, 0, 0))==-1){
-	//		perror("semaphore");
-	//		exit(1);
-	//	}
 
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
-
-    /*if ((pthread_create( &thread1, NULL,(void *)levantar_arch_conf_nodo, NULL))== -1){
-			perror("fallo en el:thread 1");
-			exit(1);
-	}*/
 
 	levantar_arch_conf_nodo();
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-//	solicitarConexionConFS(&socketaddr_fs,&info_envio);
-	socket_fs = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
+    socket_fs = solicitarConexionConFileSystem(conf);
 
-	log_debug(logger,"id: %i",info_envio.cant_bloques);
+    mapearArchivo();
+
+	//log_debug(logger,"id: %i",info_envio.cant_bloques);
 
 	if (enviar_info_nodo(socket_fs, &info_envio) <= 0) {
 		log_error(logger, "no se pudo enviar el info nodo");
@@ -113,37 +104,56 @@ int main(void) {
 		log_info(logger, "Se envio correctamente info nodo");
 	}
 
-	mapearArchivo();
 
 	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
-			perror("fallo en el: thread 2");
+		perror("fallo en el: thread 2");
 			exit(1);
 	}
 
 	//esperar_instrucciones_del_filesystem(socket_fs);
 
+
+	//esperar_instrucciones_job();
+
 	free_conf_nodo();
 
 	pthread_join(thread2, NULL);
-
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
 
 //---------------------------------------------------------------------------
 
-int esperar_instrucciones_del_filesystem(int socket){
+int solicitarConexionConFileSystem(struct conf_nodo conf) {
+
+	log_debug(logger, "Solicitando conexión con MDFS...");
+	int socketFS = solicitarConexionCon(conf.ip_fs, conf.puerto_fs);
+
+	if (socketFS != -1) {
+		log_info(logger, "Conexión con MDFS establecida IP: %s, Puerto: %i", conf.ip_fs, conf.puerto_fs);
+	} else {
+		log_error(logger, "Conexión con MDFS FALLIDA!!! IP: %s, Puerto: %i", conf.ip_fs, conf.puerto_fs);
+		exit(-1);
+	}
+
+	return socketFS;
+}
+
+
+//---------------------------------------------------------------------------
+
+int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
-	tarea = recibir_protocolo(socket);
+	log_info(logger, "Esperando Instruccion FS");
+	tarea = recibir_protocolo(*socket);
 
     while(tarea != DISCONNECTED){
-
 
 	    switch (tarea) {
 
 		case WRITE_BLOCK:
-			if (recibir_Bloque(socket) <=0) {
+			if (recibir_Bloque(*socket) <=0) {
 				log_error(logger, "no se pudo cargar el bloque");
 			}
 			else {
@@ -152,7 +162,7 @@ int esperar_instrucciones_del_filesystem(int socket){
 			break;
 
 		case READ_BLOCK:
-			if (enviar_bloque(socket) <=0){
+			if (enviar_bloque(*socket) <=0){
 				log_error(logger, "no se pudo enviar el bloque");
 			}
 			else {
@@ -262,7 +272,8 @@ int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
 	result =(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
 	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
-
+	result = (result > 0) ? enviar_string(socket, conf.ip_nodo) : result;
+	result = (result > 0) ? enviar_int(socket, conf.puerto_nodo) : result;
 	return result;
 }
 
@@ -281,6 +292,8 @@ void mapearArchivo() {
 	struct stat sbuf;
 	char* path = conf.archivo_bin;
 
+	log_info(logger, "inicio de mapeo");
+
 	if ((fd = open(path, O_RDWR)) == -1) {
 		perror("open()");
 		exit(1);
@@ -289,7 +302,7 @@ void mapearArchivo() {
 	if (fstat(fd, &sbuf) == -1) {
 		perror("fstat()");
 	}
-    sem_wait(&semaforo1);
+   sem_wait(&semaforo1);
 	data = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			fd, 0);
 
@@ -298,6 +311,7 @@ void mapearArchivo() {
 		exit(1);
 	}
 	sem_post(&semaforo1);
+	log_info(logger,"mapeo correcto");
 }
 //---------------------------------------------------------------------------
 void cargarBloque(int nroBloque, char* info, int offset_byte) {

@@ -16,3 +16,69 @@
 [INFO] 12:56:43:408 NODO/(4152:4152): Se envio correctamente info nodo
 [DEBUG] 12:57:58:90 NODO/(4197:4197): id: 100
 [ERROR] 12:57:59:239 NODO/(4197:4197): no se pudo enviar el info nodo
+[DEBUG] 15:42:33:413 NODO/(6055:6055): id: 10
+[INFO] 15:42:33:413 NODO/(6055:6055): Se envio correctamente info nodo
+[DEBUG] 15:46:28:659 NODO/(6114:6114): id: 10
+[INFO] 15:46:28:659 NODO/(6114:6114): Se envio correctamente info nodo
+[DEBUG] 15:53:51:257 NODO/(6287:6287): id: 10
+[INFO] 15:53:51:257 NODO/(6287:6287): Se envio correctamente info nodo
+[DEBUG] 15:54:32:384 NODO/(6297:6297): id: 10
+[INFO] 15:54:32:384 NODO/(6297:6297): Se envio correctamente info nodo
+[DEBUG] 15:59:15:52 NODO/(6415:6415): id: 10
+[INFO] 15:59:15:52 NODO/(6415:6415): Se envio correctamente info nodo
+[DEBUG] 15:59:30:976 NODO/(6423:6423): id: 10
+[INFO] 15:59:30:976 NODO/(6423:6423): Se envio correctamente info nodo
+[DEBUG] 16:00:34:26 NODO/(6489:6489): id: 10
+[ERROR] 16:00:34:26 NODO/(6489:6489): no se pudo enviar el info nodo
+[DEBUG] 16:00:39:204 NODO/(6498:6498): id: 10
+[INFO] 16:00:39:204 NODO/(6498:6498): Se envio correctamente info nodo
+[DEBUG] 16:00:51:176 NODO/(6507:6507): id: 10
+[INFO] 16:00:51:176 NODO/(6507:6507): Se envio correctamente info nodo
+[DEBUG] 16:04:39:456 NODO/(6643:6643): id: 10
+[INFO] 16:04:39:456 NODO/(6643:6643): Se envio correctamente info nodo
+[DEBUG] 16:04:49:718 NODO/(6654:6654): id: 10
+[INFO] 16:04:49:718 NODO/(6654:6654): Se envio correctamente info nodo
+[DEBUG] 16:09:18:188 NODO/(6853:6853): id: 10
+[INFO] 16:09:18:188 NODO/(6853:6853): Se envio correctamente info nodo
+[DEBUG] 16:09:20:478 NODO/(6854:6854): id: 10
+[INFO] 16:09:20:478 NODO/(6854:6854): Se envio correctamente info nodo
+[DEBUG] 16:10:19:338 NODO/(6902:6902): id: 10
+[INFO] 16:10:19:338 NODO/(6902:6902): Se envio correctamente info nodo
+[DEBUG] 16:10:20:426 NODO/(6903:6903): id: 10
+[INFO] 16:10:20:426 NODO/(6903:6903): Se envio correctamente info nodo
+[DEBUG] 16:14:05:888 NODO/(7055:7055): id: 10
+[INFO] 16:14:05:888 NODO/(7055:7055): Se envio correctamente info nodo
+[DEBUG] 16:14:10:240 NODO/(7063:7063): id: 10
+[INFO] 16:14:10:240 NODO/(7063:7063): Se envio correctamente info nodo
+[DEBUG] 16:14:52:832 NODO/(7133:7133): id: 10
+[INFO] 16:14:52:832 NODO/(7133:7133): Se envio correctamente info nodo
+[DEBUG] 16:15:00:668 NODO/(7146:7146): id: 10
+[INFO] 16:15:00:668 NODO/(7146:7146): Se envio correctamente info nodo
+[DEBUG] 16:15:39:346 NODO/(7192:7192): id: 10
+[INFO] 16:15:39:346 NODO/(7192:7192): Se envio correctamente info nodo
+[DEBUG] 16:16:10:702 NODO/(7217:7217): id: 10
+[INFO] 16:16:10:702 NODO/(7217:7217): Se envio correctamente info nodo
+[DEBUG] 16:16:19:38 NODO/(7227:7227): id: 10
+[INFO] 16:16:19:38 NODO/(7227:7227): Se envio correctamente info nodo
+[DEBUG] 16:18:54:263 NODO/(7371:7371): id: 10
+[INFO] 16:18:54:263 NODO/(7371:7371): Se envio correctamente info nodo
+[DEBUG] 16:23:49:398 NODO/(7668:7668): id: 10
+[INFO] 16:23:49:398 NODO/(7668:7668): Se envio correctamente info nodo
+[DEBUG] 16:37:59:841 NODO/(8329:8329): Solicitando conexión con MDFS...
+[INFO] 16:37:59:841 NODO/(8329:8329): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 16:37:59:841 NODO/(8329:8329): inicio de mapeo
+[INFO] 16:37:59:841 NODO/(8329:8329): mapeo correcto
+[INFO] 16:37:59:841 NODO/(8329:8329): Se envio correctamente info nodo
+[INFO] 16:37:59:841 NODO/(8329:8330): Esperando Instruccion FS
+[DEBUG] 16:38:52:855 NODO/(8418:8418): Solicitando conexión con MDFS...
+[INFO] 16:38:52:855 NODO/(8418:8418): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 16:38:52:855 NODO/(8418:8418): inicio de mapeo
+[INFO] 16:38:52:855 NODO/(8418:8418): mapeo correcto
+[INFO] 16:38:52:855 NODO/(8418:8418): Se envio correctamente info nodo
+[INFO] 16:38:52:855 NODO/(8418:8419): Esperando Instruccion FS
+[DEBUG] 16:39:13:241 NODO/(8428:8428): Solicitando conexión con MDFS...
+[INFO] 16:39:13:241 NODO/(8428:8428): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 16:39:13:241 NODO/(8428:8428): inicio de mapeo
+[INFO] 16:39:13:241 NODO/(8428:8428): mapeo correcto
+[INFO] 16:39:13:241 NODO/(8428:8428): Se envio correctamente info nodo
+[INFO] 16:39:13:241 NODO/(8428:8429): Esperando Instruccion FS

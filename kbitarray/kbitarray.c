@@ -64,7 +64,7 @@ void kbitarray_set_all(t_kbitarray* self) {
 	int i;
 
 	for (i = 0; i < self->char_count; i++) {
-		self->bitarray[i] = CHAR_SET; //XXX TESTME
+		self->bitarray[i] = CHAR_SET;
 	}
 }
 

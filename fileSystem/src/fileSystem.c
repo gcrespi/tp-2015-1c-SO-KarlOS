@@ -40,7 +40,7 @@
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //20*1024*1024
-#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
+#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
 enum t_estado_nodo {
@@ -162,7 +162,7 @@ void rmnode(char*);
 
 //Prototipos
 void levantar_arch_conf();
-void recivir_info_nodo (int);
+int recivir_info_nodo (int);
 int recivir_instrucciones(int);
 void setSocketAddr(struct sockaddr_in*);
 void hilo_listener();
@@ -254,7 +254,12 @@ void hilo_listener() {
 			if (FD_ISSET(i, &read_fds)) {
 				if (i == listener) {
 					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
-					recivir_instrucciones(socketfd_cli);
+					if(recivir_instrucciones(socketfd_cli) <= 0) {
+						puts("Error al recibir el info Nodo");//FIXME
+						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+						close(listener);
+						exit(-1);
+					}
 					FD_SET(socketfd_cli, &master);
 					if (socketfd_cli > fd_max)
 						fd_max = socketfd_cli;
@@ -270,44 +275,40 @@ void hilo_listener() {
 //---------------------------------------------------------------------------
 int recivir_instrucciones(int socket){
 	uint32_t prot;
-	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
-		return -1;
-	}
+//	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
+//		return -1;
+//	}
+	int result;
+
+	prot = receive_protocol_in_order(socket);
+
 	switch (prot) {
 	case INFO_NODO:
-		recivir_info_nodo(socket);
+		result = recivir_info_nodo(socket);
 		break;
 	default:
 		return -1;
 	}
-	return prot;
+	return result;
 }
 //---------------------------------------------------------------------------
-void recivir_info_nodo (int socket){
+int recivir_info_nodo (int socket){
 	struct info_nodo* info_nodo;
 	info_nodo = malloc(sizeof(struct info_nodo));
-	if (recibir(socket, &(info_nodo->id)) == -1) { //recibe id del nodo
-		perror("Error reciving id");
-		exit(-1);
-	}
-	if (recibir(socket, &(info_nodo->cant_bloques)) == -1) { //recibe cantidad de bloques del nodo
-		perror("Error reciving cant_bloques");
-		exit(-1);
-	}
-	if (recibir(socket, &(info_nodo->nodo_nuevo)) == -1) { //recibe si el nodo es nuevo o no
-		perror("Error reciving nodo_nuevo");
-		exit(-1);
-	}
-	if (recibir(socket, &(info_nodo->ip_listen)) == -1) { //recibe el ip donde escucha el nodo
-		perror("Error reciving ip_listen");
-		exit(-1);
-	}
-	if (recibir(socket, &(info_nodo->port_listen)) == -1) { //recibe el puerto donde escucha el nodo
-		perror("Error reciving nodo_nuevo");
-		exit(-1);
-	}
+
+	int result = receive_int_in_order(socket,&(info_nodo->id));
+
+	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->cant_bloques)) : result;
+	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->nodo_nuevo)) : result;
+	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->ip_listen)) : result;
+	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->port_listen)) : result;
+
 	info_nodo->socket_FS_nodo = socket;
+	printf("agregando nodo: %i\n",info_nodo->id);
+	fflush(stdout);
 	list_add(list_info_nodo, info_nodo);
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -1344,7 +1345,7 @@ void lsnode() {
 	socklen_t peer_size = sizeof(struct sockaddr_in);
 	int i;
 	for (i = 0; i < lsize; i++) {
-		ptr_nodo = list_get(list_info_nodo, i);
+		ptr_nodo = list_get(listaNodos, i);
 		getpeername(ptr_nodo->socket_FS_nodo, (struct sockaddr*)&peer, &peer_size);
 		printf(" ID: %d\n", ptr_nodo->id_nodo);
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
@@ -1367,10 +1368,11 @@ void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
 			nuevo_nodo = malloc(sizeof(struct t_nodo));
 				nuevo_nodo->id_nodo = infnod->id;
 				nuevo_nodo->estado = infnod->nodo_nuevo;
-				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
+				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;//FIXME es innecesario
 				nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
 				nuevo_nodo->ip_listen = infnod->ip_listen;
 				nuevo_nodo->port_listen = infnod->port_listen;
+				nuevo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
 			info_nodo_destroy(infnod);
 			list_add(listaNodos, nuevo_nodo);
 		} else {

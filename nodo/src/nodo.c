@@ -271,12 +271,16 @@ int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {
 
 	int result = 1;
 
-	result = (result > 0) ? enviar_protocolo(socket, INFO_NODO) : result;
-	result = (result > 0) ? enviar_int(socket, info_nodo->id) : result;
-	result =(result > 0) ? enviar_int(socket, info_nodo->cant_bloques) : result;
-	result = (result > 0) ? enviar_int(socket, info_nodo->nodo_nuevo) : result;
-	result = (result > 0) ? enviar_string(socket, conf.ip_nodo) : result;
-	result = (result > 0) ? enviar_int(socket, conf.puerto_nodo) : result;
+	t_buffer* info_nodo_buffer = buffer_create_with_protocol(INFO_NODO);
+
+	buffer_add_int(info_nodo_buffer,info_nodo->id);
+	buffer_add_int(info_nodo_buffer,info_nodo->cant_bloques);
+	buffer_add_int(info_nodo_buffer,info_nodo->nodo_nuevo);
+	buffer_add_int(info_nodo_buffer,inet_addr(conf.ip_nodo));
+	buffer_add_int(info_nodo_buffer,conf.puerto_nodo);
+
+	send_buffer_and_destroy(socket,info_nodo_buffer);
+
 	return result;
 }
 

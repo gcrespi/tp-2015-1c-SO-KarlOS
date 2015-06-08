@@ -183,9 +183,6 @@ uint32_t receive_protocol_in_order(int socket) {//TODO devolver el valor prot es
 
 
 
-//********************************XXX TESTME XXX*******************************
-
-
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {
 	perror(cause);

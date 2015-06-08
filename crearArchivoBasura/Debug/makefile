@@ -35,7 +35,7 @@ crearArchivoBasura: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) crearArchivoBasura
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) crearArchivoBasura
 	-@echo ' '
 
 .PHONY: all clean dependents

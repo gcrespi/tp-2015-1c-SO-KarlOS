@@ -60,7 +60,7 @@ sem_t semaforo2;
 pthread_t thread1, thread2, thread3;
 pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t *mutex;
+pthread_mutex_t* mutex;
 
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
@@ -78,16 +78,26 @@ int enviar_bloque(int);
 
 //Main
 int main(void) {
-	int socket_fs; // file descriptor del FS
+	int socket_fs,i,listener_job; // file descriptor del FS
+
+	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
+
+	levantar_arch_conf_nodo();
+
+	mutex = malloc(sizeof(pthread_mutex_t)*conf.cant_bloques);
+
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_init(&mutex[i],NULL);
+	}
+
 
 	if((sem_init(&semaforo1, 0, 1))==-1){
 			perror("semaphore");
 			exit(1);
 		}
 
-	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
-	levantar_arch_conf_nodo();
+
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
@@ -110,14 +120,25 @@ int main(void) {
 			exit(1);
 	}
 
-	//esperar_instrucciones_del_filesystem(socket_fs);
-
+	log_debug(logger, "Obteniendo Puerto para Escuchar Jobs...");
+	if ((listener_job = escucharConexionesDesde("", conf.puerto_nodo)) == -1) {
+		log_error(logger, "No se pudo obtener Puerto para Escuchar Jobs");
+		exit(-1);
+	} else {
+		log_debug(logger, "Puerto para Escuchar Jobs Obtenido");
+	}
 
 	//esperar_instrucciones_job();
 
 	free_conf_nodo();
 
 	pthread_join(thread2, NULL);
+
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_destroy(&mutex[i]);
+	}
+	free(mutex);
+
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
@@ -172,6 +193,9 @@ int esperar_instrucciones_del_filesystem(int *socket){
 				}
 			break;
 
+		case READ_RESULT_JOB: //XXX
+			break;
+
 		default:
 			return -1;
 		}
@@ -190,10 +214,10 @@ int recibir_Bloque(int socket) {
     int nroBloque;
     int longInfo;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-//		pthread_mutex_lock( &mutex[nroBloque] );
+		pthread_mutex_lock( &mutex[nroBloque] );
 		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
 		data[nroBloque*block_size + longInfo]='\0';
-//		pthread_mutex_unlock( &mutex[nroBloque] );
+		pthread_mutex_unlock( &mutex[nroBloque] );
 		return result;
 }
 
@@ -204,9 +228,9 @@ int enviar_bloque(int socket) {
 	int result = 1;
     int nroBloque;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-//		pthread_mutex_lock(&mutex[nroBloque]);
+		pthread_mutex_lock(&mutex[nroBloque]);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
-//		pthread_mutex_unlock(&mutex[nroBloque]);
+		pthread_mutex_unlock(&mutex[nroBloque]);
 		return result;
 }
 //---------------------------------------------------------------------------
@@ -243,28 +267,6 @@ void setNodoToSend(struct info_nodo *info_envio) {
 	info_envio->nodo_nuevo = conf.nodo_nuevo;
 	info_envio->cant_bloques = conf.cant_bloques;
 }
-
-////---------------------------------------------------------------------------
-//void solicitarConexionConFS(struct sockaddr_in *direccionDestino,
-//		struct info_nodo *info_envio) {
-//
-//	if ((socket_fs = socket(AF_INET, SOCK_STREAM, 0)) == -1) { // crea un Socket
-//		perror("Error while socket()");
-//		exit(-1);
-//	}
-//
-//	if (connect(socket_fs, (struct sockaddr*) direccionDestino,
-//			sizeof(struct sockaddr)) == -1) { // conecta con el servidor
-//		perror("Error while connect()");
-//		exit(-1);
-//	}
-//
-//	if (enviar_info_nodo(socket_fs, info_envio) == -1) { // envia la estructura al FS
-//		perror("Error while send()");
-//		exit(-1);
-//	}
-//
-//}
 
 //---------------------------------------------------------------------------
 int enviar_info_nodo(int socket, struct info_nodo *info_nodo) {

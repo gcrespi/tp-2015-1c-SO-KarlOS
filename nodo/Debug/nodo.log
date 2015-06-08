@@ -155,3 +155,38 @@
 [INFO] 17:23:51:616 NODO/(9762:9763): Esperando Instruccion FS
 [INFO] 17:24:10:288 NODO/(9762:9763): Se cargo correctamente el bloque al nodo
 [INFO] 17:24:10:288 NODO/(9762:9763): Se cargo correctamente el bloque al nodo
+[DEBUG] 17:30:39:931 NODO/(9973:9973): Solicitando conexión con MDFS...
+[INFO] 17:30:39:977 NODO/(9973:9973): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:30:39:979 NODO/(9973:9973): inicio de mapeo
+[INFO] 17:30:39:982 NODO/(9973:9973): mapeo correcto
+[INFO] 17:30:39:990 NODO/(9973:9973): Se envio correctamente info nodo
+[INFO] 17:30:39:3 NODO/(9973:9974): Esperando Instruccion FS
+[INFO] 17:31:11:164 NODO/(9973:9974): Se cargo correctamente el bloque al nodo
+[INFO] 17:31:11:165 NODO/(9973:9974): Se cargo correctamente el bloque al nodo
+[DEBUG] 17:34:44:905 NODO/(10091:10091): Solicitando conexión con MDFS...
+[INFO] 17:34:44:951 NODO/(10091:10091): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:34:44:953 NODO/(10091:10091): inicio de mapeo
+[INFO] 17:34:44:956 NODO/(10091:10091): mapeo correcto
+[INFO] 17:34:44:964 NODO/(10091:10091): Se envio correctamente info nodo
+[INFO] 17:34:44:977 NODO/(10091:10092): Esperando Instruccion FS
+[INFO] 17:35:05:356 NODO/(10091:10092): Se cargo correctamente el bloque al nodo
+[INFO] 17:35:05:357 NODO/(10091:10092): Se cargo correctamente el bloque al nodo
+[DEBUG] 17:40:32:853 NODO/(10206:10206): Solicitando conexión con MDFS...
+[INFO] 17:40:32:899 NODO/(10206:10206): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:40:32:901 NODO/(10206:10206): inicio de mapeo
+[INFO] 17:40:32:904 NODO/(10206:10206): mapeo correcto
+[INFO] 17:40:32:912 NODO/(10206:10206): Se envio correctamente info nodo
+[INFO] 17:40:32:925 NODO/(10206:10207): Esperando Instruccion FS
+[INFO] 17:40:55:332 NODO/(10206:10207): Se cargo correctamente el bloque al nodo
+[INFO] 17:40:55:332 NODO/(10206:10207): Se cargo correctamente el bloque al nodo
+[INFO] 17:41:46:820 NODO/(10206:10207): Se cargo correctamente el bloque al nodo
+[DEBUG] 18:18:36:712 NODO/(10776:10776): Solicitando conexión con MDFS...
+[ERROR] 18:18:36:777 NODO/(10776:10776): Conexión con MDFS FALLIDA!!! IP: 127.0.0.1, Puerto: 5555
+[DEBUG] 18:18:55:897 NODO/(10853:10853): Solicitando conexión con MDFS...
+[INFO] 18:18:55:942 NODO/(10853:10853): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 18:18:55:944 NODO/(10853:10853): inicio de mapeo
+[INFO] 18:18:55:947 NODO/(10853:10853): mapeo correcto
+[INFO] 18:18:55:955 NODO/(10853:10853): Se envio correctamente info nodo
+[INFO] 18:18:55:968 NODO/(10853:10854): Esperando Instruccion FS
+[INFO] 18:19:47:199 NODO/(10853:10854): Se cargo correctamente el bloque al nodo
+[INFO] 18:19:47:200 NODO/(10853:10854): Se cargo correctamente el bloque al nodo

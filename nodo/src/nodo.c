@@ -148,7 +148,9 @@ int esperar_instrucciones_del_filesystem(int *socket){
 	log_info(logger, "Esperando Instruccion FS");
 	tarea = recibir_protocolo(*socket);
 
-    while(tarea != DISCONNECTED){
+    do{
+
+    	tarea = recibir_protocolo(*socket);
 
 	    switch (tarea) {
 
@@ -173,7 +175,8 @@ int esperar_instrucciones_del_filesystem(int *socket){
 		default:
 			return -1;
 		}
-    }
+    } while(tarea != DISCONNECTED);
+
 	return tarea;
 
 

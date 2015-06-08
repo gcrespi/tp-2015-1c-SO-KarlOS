@@ -37,7 +37,7 @@
 									<listOptionValue builtIn="false" value="connectionlib"/>
 								</option>
 								<option id="gnu.c.link.option.paths.845108272" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/connectionlib/Debug}&quot;"/>
+									<listOptionValue builtIn="false" value="/home/utnso/tp-2015-1c-karlos/connectionlib/Debug"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/kbitarray/Debug}&quot;"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1773372675" superClass="cdt.managedbuild.tool.gnu.c.linker.input">

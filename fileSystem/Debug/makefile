@@ -29,13 +29,13 @@ all: fileSystem
 fileSystem: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc -L/home/utnso/tp-2015-1c-karlos/connectionlib/Debug -L"/home/utnso/tp-2015-1c-karlos/kbitarray/Debug" -o "fileSystem" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc -L"/home/gustavo/git/tp-2015-1c-karlos/kbitarray/Debug" -L"/home/gustavo/git/tp-2015-1c-karlos/connectionlib/Debug" -o "fileSystem" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) fileSystem
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) fileSystem
 	-@echo ' '
 
 .PHONY: all clean dependents

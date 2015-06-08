@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "/home/gustavo/git/tp-2015-1c-karlos/connectionlib/connectionlib.h"
+#include "../../connectionlib/connectionlib.h"
 
 t_log* paranoid_log;
 

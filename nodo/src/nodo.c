@@ -194,6 +194,9 @@ int esperar_instrucciones_del_filesystem(int *socket){
 			break;
 
 		case READ_RESULT_JOB: //XXX
+//			path_completo = string_from_format("%s/%s",path_temporales,nombre_result);
+
+//			free(path_completo);
 			break;
 
 		default:

@@ -146,7 +146,7 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
 	log_info(logger, "Esperando Instruccion FS");
-	tarea = recibir_protocolo(*socket);
+	//tarea = recibir_protocolo(*socket);
 
     do{
 

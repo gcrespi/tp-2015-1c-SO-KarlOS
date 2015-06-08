@@ -1243,7 +1243,7 @@ void blocks(char* arch_path){
 		puts("blocks: falta un archivo como operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
 		for(i=0;i<arch_aux->cant_bloq;i++){
-			block = list_get(arch_aux->bloques,i);
+			block = list_get(arch_aux->bloques,i); //FIXME al borrar uno no baja la cantidad de blockes  (usar list_iterate)
 			printf(" # Block: %d\n",block->nro_bloq);
 			j=0;
 			void _print_copies(struct t_copia_bloq* copy){
@@ -1258,7 +1258,7 @@ void blocks(char* arch_path){
 }
 
 //---------------------------------------------------------------------------
-void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){
+void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
 	int num_block, num_copy;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1275,7 +1275,7 @@ void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){
 			int _eq_num_block(struct t_bloque* block){
 				return block->nro_bloq==num_block;
 			}
-			bloque = list_find(arch_aux->bloques, (void*) _eq_num_block);
+			bloque = list_remove_by_condition(arch_aux->bloques, (void*) _eq_num_block);
 			copia_bloque_destroy(list_get(bloque->list_copias, num_copy));
 		} else {
 			printf("%s: el archivo no existe\n",arch_aux->nombre);

@@ -509,7 +509,7 @@ int has_disp_block(struct t_nodo* nodo){
 }
 
 //---------------------------------------------------------------------------
-int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el socket de un nodo que tenga espacio disponible y no este en la lista de usados
+int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el nodo que tenga espacio disponible y no este en la lista de usados
 	t_list* filtered_list;
 	int _disp_and_not_used(struct t_nodo* nodo){
 		return has_disp_block(nodo) && !contains(nodo, list_used);
@@ -527,7 +527,9 @@ int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index
 	*index_set = kbitarray_find_first_clean((*the_choosen_one)->bloquesLlenos);
 	kbitarray_set_bit((*the_choosen_one)->bloquesLlenos,*index_set);
 	return 0;
-}
+} //FIXME elegir el que tenga más bloques disponibles
+
+
 
 //---------------------------------------------------------------------------
 int dividir_int(int numerador, int denominador){
@@ -606,6 +608,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 				copy_block->bloq_nodo = index_set;
 			list_add(block->list_copias,copy_block);
 		}
+		list_clean(list_used);
 		block->nro_bloq = *blocks_sent;
 		list_add(*list_blocks,block);
 		(*blocks_sent)++;
@@ -1210,7 +1213,7 @@ void download(char* arch_path, char* local_path){
 		puts("download: falta un operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
 		if(todosLosBloquesDelArchivoDisponibles(arch_aux)){
-			if ((local_fd = open(local_path, O_CREAT)) != -1) {
+			if ((local_fd = open(local_path, O_CREAT | O_RDWR)) != -1) {
 
 				rebuild_arch(arch_aux,local_fd);
 
@@ -1241,7 +1244,7 @@ void blocks(char* arch_path){
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
 		for(i=0;i<arch_aux->cant_bloq;i++){
 			block = list_get(arch_aux->bloques,i);
-			printf(" ID: %d\n",block->nro_bloq);
+			printf(" # Block: %d\n",block->nro_bloq);
 			j=0;
 			void _print_copies(struct t_copia_bloq* copy){
 				printf("  *Copia %d: Nodo %d, Bloque %d\n", j,copy->id_nodo, copy->bloq_nodo);

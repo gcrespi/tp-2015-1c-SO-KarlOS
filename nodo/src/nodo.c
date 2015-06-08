@@ -190,10 +190,10 @@ int recibir_Bloque(int socket) {
     int nroBloque;
     int longInfo;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock( &mutex[nroBloque] );
+//		pthread_mutex_lock( &mutex[nroBloque] );
 		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
 		data[nroBloque*block_size + longInfo]='\0';
-		pthread_mutex_unlock( &mutex[nroBloque] );
+//		pthread_mutex_unlock( &mutex[nroBloque] );
 		return result;
 }
 
@@ -204,9 +204,9 @@ int enviar_bloque(int socket) {
 	int result = 1;
     int nroBloque;
 		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock(&mutex[nroBloque]);
+//		pthread_mutex_lock(&mutex[nroBloque]);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
-		pthread_mutex_unlock(&mutex[nroBloque]);
+//		pthread_mutex_unlock(&mutex[nroBloque]);
 		return result;
 }
 //---------------------------------------------------------------------------

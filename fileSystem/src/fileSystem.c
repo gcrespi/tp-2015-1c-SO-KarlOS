@@ -40,7 +40,7 @@
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //20*1024*1024
-#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos
+#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
 enum t_estado_nodo {
@@ -868,8 +868,8 @@ char execute_command(char* command){
 													"renamedir","upload","download","md5","blocks","rmblock","cpblock","lsrequest",
 													"lsnode","addnode","rmnode", "clear","exit","","","","","",""};
 	int i,salir=0;
-	for(i=0;command[i]==' ';i++);
-	if(command[i]=='\0')
+	string_static_trim(command);
+	if(command[0]=='\0')
 	{	return 0;}
 	char** subcommands = string_split(command, " ");
 	for (i = 0; (i < MAX_COMMANOS_VALIDOS) && (strcmp(subcommands[0], comandos_validos[i]) != 0); i++);
@@ -1166,7 +1166,7 @@ void upload(char* local_path, char* mdfs_path){
 
 	if(local_path!=NULL && mdfs_path!=NULL) {
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
-			/* probar TODO esto urgenchi;
+
 			fstat(local_fd, &file_stat);
 			data = mmap((caddr_t)0, file_stat.st_size, PROT_READ, MAP_SHARED, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
@@ -1174,7 +1174,7 @@ void upload(char* local_path, char* mdfs_path){
 				exit(1);
 			}
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
-			*/
+
 			if (close(local_fd) == -1) perror("close");
 			if(send_ok!=-1){
 				get_info_from_path(mdfs_path, &arch_name, &parent_dir);
@@ -1347,7 +1347,7 @@ void lsnode() {
 		printf(" ID: %d\n", ptr_nodo->id_nodo);
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
 		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
-		printf("  *Bloques ocupados: %d\n", kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
+		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
 	}
 }
 

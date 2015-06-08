@@ -21,7 +21,10 @@ typedef struct {
 
 //Enum del protocolo
 enum protocolo {
-	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO, FINISHED_JOB, ABORTED_JOB, WRITE_BLOCK, READ_BLOCK, MAP_OK
+	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO,
+	FINISHED_JOB, ABORTED_JOB, WRITE_BLOCK, READ_BLOCK, MAP_OK, NODO_NOT_FOUND,
+	INFO_ARCHIVO_REQUEST, ARCHIVO_NO_DISPONIBLE, BLOCK_LOCATION_REQUEST, BLOCK_LOCATION,
+	LOST_BLOCK
 };
 
 t_buffer* buffer_create();
@@ -61,5 +64,9 @@ void getFromSocketAddrStd(struct sockaddr_in address, char** ip, int* port);
 void free_string_splits(char** strings);
 int has_all_properties(int cant_properties, char** properties, t_config* conf_arch);
 void leerStdin(char *leido, int maxLargo);
+
+void string_static_trim_left(char* string);
+void string_static_trim_right(char* string);
+void string_static_trim(char* string);
 
 #endif /* CONNECTIONLIB_H_ */

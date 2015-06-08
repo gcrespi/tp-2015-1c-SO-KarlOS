@@ -167,7 +167,7 @@ int receive_int_in_order(int socket, uint32_t *number) {
 }
 
 //---------------------------------------------------------------------------
-uint32_t receive_protocol_in_order(int socket) {
+uint32_t receive_protocol_in_order(int socket) {//TODO devolver el valor prot esta bien o es cualca?
 	uint32_t prot;
 
 	int result = receive_int_in_order(socket,&prot);
@@ -468,3 +468,33 @@ void leerStdin(char *leido, int maxLargo) {
 		leido[strlen(leido) - 1] = '\0';
 	}
 }
+
+//-------------------------------------------------------------------------------------
+void string_static_trim_right(char* string) {
+	int i;
+
+	for(i=strlen(string)-1; (i>=0) && (string[i] == ' '); i--) {
+		string[i] = string[i+1];
+	}
+}
+
+//-------------------------------------------------------------------------------------
+void string_static_trim_left(char* string) {
+	int i,j;
+
+	for (i = 0; (string[i] != '\0') && (string[i] == ' '); i++);
+
+	if(i==0)
+		return;
+
+	for(j=i; (string[j-1] != '\0'); j++) {
+		string[j-i] = string[j];
+	}
+}
+
+//-------------------------------------------------------------------------------------
+void string_static_trim(char* string) {
+	string_static_trim_left(string);
+	string_static_trim_right(string);
+}
+

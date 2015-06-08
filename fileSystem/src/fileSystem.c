@@ -358,18 +358,20 @@ int estaDisponibleElArchivo(struct t_arch* archivo) {
 
 //---------------------------------------------------------------------------
 void levantar_arch_conf() {
-	t_config* conf_arch;
-	conf_arch = config_create("fs.cfg");
-	if (config_has_property(conf_arch,"FS_VACIO")){
-			conf.fs_vacio = config_get_int_value(conf_arch,"FS_VACIO");
-		} else printf("Error: el archivo de conf no tiene FS_VACIO\n");
-	if (config_has_property(conf_arch,"PUERTO_LISTEN")){
-		conf.puerto_listen = config_get_int_value(conf_arch,"PUERTO_LISTEN");
-	} else printf("Error: el archivo de conf no tiene PUERTO_LISTEN\n");
-	if (config_has_property(conf_arch,"MIN_CANT_NODOS")){
-		conf.min_cant_nodos = config_get_int_value(conf_arch,"MIN_CANT_NODOS");
-	} else printf("Error: el archivo de conf no tiene MIN_CANT_NODOS\n");
+
+	char** properties = string_split("FS_VACIO,PUERTO_LISTEN,MIN_CANT_NODOS", ",");
+	t_config* conf_arch = config_create("fs.cfg");
+
+	if (has_all_properties(3, properties, conf_arch)) {
+		conf.fs_vacio = config_get_int_value(conf_arch,properties[0]);
+		conf.puerto_listen = config_get_int_value(conf_arch,properties[1]);
+		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[2]);
+	} else {
+//		log_error(paranoid_log, "Faltan propiedades en archivo de Configuración");//FIXME tirar cartel de error
+		exit(-1);
+	}
 	config_destroy(conf_arch);
+	free_string_splits(properties);
 }
 
 //---------------------------------------------------------------------------
@@ -384,7 +386,7 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 //---------------------------------------------------------------------------
 void preparar_fs () {
 	listaNodos = list_create();
-	if(conf.fs_vacio){
+	if(conf.fs_vacio){//FIXME sacar fs_vacio
 		set_root();
 		arch_id_counter = 0;
 	} else {

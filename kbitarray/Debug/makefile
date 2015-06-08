@@ -34,7 +34,7 @@ libkbitarray.a: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(ARCHIVES)$(OBJS)$(C_DEPS) libkbitarray.a
+	-$(RM) $(OBJS)$(C_DEPS)$(ARCHIVES) libkbitarray.a
 	-@echo ' '
 
 .PHONY: all clean dependents

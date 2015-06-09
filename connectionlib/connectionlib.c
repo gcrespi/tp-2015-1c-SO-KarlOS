@@ -19,6 +19,7 @@
 #include <string.h>
 #include <commons/config.h>
 #include <commons/string.h>
+#include <commons/collections/list.h>
 #include "../connectionlib/connectionlib.h"
 
 #define BACKLOG 5
@@ -78,7 +79,7 @@ void buffer_destroy(t_buffer* self) {
 
 //---------------------------------------------------------------------------
 int send_buffer(int socket, t_buffer* self) {
-	return enviar_without_size(socket, self->buffer, self->size);
+	return send_stream_without_size(socket, self->buffer, self->size);
 }
 
 //---------------------------------------------------------------------------
@@ -91,8 +92,13 @@ int send_buffer_and_destroy(int socket, t_buffer* self) {
 
 //---------------------------------------------------------------------------
 int send_protocol_in_order(int socket, uint32_t protocol) {
-	protocol = htonl(protocol);
-	return enviar_without_size(socket,&protocol,sizeof(uint32_t));
+	return send_int_in_order(socket,protocol);
+}
+
+//---------------------------------------------------------------------------
+int send_int_in_order(int socket, uint32_t entero) {
+	entero = htonl(entero);
+	return send_stream_without_size(socket,&entero,sizeof(uint32_t));
 }
 
 //---------------------------------------------------------------------------
@@ -167,7 +173,7 @@ int receive_int_in_order(int socket, uint32_t *number) {
 }
 
 //---------------------------------------------------------------------------
-uint32_t receive_protocol_in_order(int socket) {//TODO devolver el valor prot esta bien o es cualca?
+uint32_t receive_protocol_in_order(int socket) {
 	uint32_t prot;
 
 	int result = receive_int_in_order(socket,&prot);
@@ -256,51 +262,8 @@ int aceptarCliente(int listener, struct sockaddr_in* direccionCliente) {
 }
 
 //---------------------------------------------------------------------------
-int enviar_protocolo(int socket, uint32_t protocolo) {
-	uint32_t prot = protocolo;
-	int result = 0;
+int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer) {
 
-	if ((result = send(socket, &prot, sizeof(uint32_t), 0)) == -1) { //envia el protocolo
-		mostrar_error(-1, "Error sending");
-		return -1;
-	}
-
-	return result;
-}
-
-//---------------------------------------------------------------------------
-uint32_t recibir_protocolo(int socket) {
-	uint32_t prot;
-
-	int result;
-
-	if ((result = recv(socket, &prot, sizeof(uint32_t), 0)) == -1) {
-		mostrar_error(-1, "Error reciving");
-		return -1;
-	}
-
-	if (result == 0) {
-		return DISCONNECTED;
-	}
-
-	return prot;
-}
-
-//---------------------------------------------------------------------------
-int enviar_int(int socket, uint32_t numero) {
-	uint32_t aux_numero = numero;
-	return enviar(socket, &aux_numero, sizeof(uint32_t));
-}
-
-//---------------------------------------------------------------------------
-int enviar_string(int socket, char *string) {
-	return enviar(socket, string, strlen(string) + 1);
-}
-
-//---------------------------------------------------------------------------
-int enviar_without_size(int socket, void *buffer, uint32_t size_buffer) {
-
-	//TODO TESTME
 	uint32_t size_sended = 0;
 	while (size_sended < size_buffer) {
 		uint32_t sending;
@@ -318,70 +281,13 @@ int enviar_without_size(int socket, void *buffer, uint32_t size_buffer) {
 }
 
 //---------------------------------------------------------------------------
-int enviar(int socket, void *buffer, uint32_t size_buffer) {
+int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer) {
+	int result;
 
-	if (send(socket, &size_buffer, sizeof(uint32_t), 0) == -1) {
-		mostrar_error(-1, "Error sending");
-		return -1;
+	if((result = send_int_in_order(socket,size_buffer)) <= 0) {
+		return result;
 	}
-
-	return enviar_without_size(socket,buffer,size_buffer);
-}
-
-//---------------------------------------------------------------------------
-int recibir(int socket, void *buffer) {
-
-	void* aux_buffer;
-
-	int result = recibir_dinamic_buffer(socket, &aux_buffer);
-
-	//TODO TESTME
-
-	if (result > 0) {
-		memcpy(buffer, aux_buffer, result);
-	}
-
-	free(aux_buffer);
-	return result;
-}
-
-//---------------------------------------------------------------------------
-int recibir_dinamic_buffer(int socket, void** buffer) {
-
-	uint32_t size_received = 0;
-	uint32_t receiving;
-
-	uint32_t size_buffer; //el tamaño del buffer como maximo va a ser de 4 gigas (32bits)
-
-	*buffer = malloc(sizeof(char)); //para que se tome en cuenta de que cada vez que esta funcion es llamada hace un malloc
-
-	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
-		mostrar_error(-1, "Error reciving");
-		return -1;
-	}
-
-	if (receiving == 0) {
-		return 0;
-	}
-
-	free(*buffer);
-	*buffer = malloc(size_buffer);
-
-	//TODO TESTME
-	while (size_received < size_buffer) {
-
-		if ((receiving = recv(socket, ((*buffer) + size_received), (size_buffer - size_received), 0)) == -1) {
-			mostrar_error(-1, "Error receiving");
-			return -1;
-		}
-
-		if (receiving == 0) {
-			return 0;
-		}
-
-		size_received += receiving;
-	}
-	return size_received;
+	return send_stream_without_size(socket,buffer,size_buffer);
 }
 
 //---------------------------------------------------------------------------
@@ -495,3 +401,17 @@ void string_static_trim(char* string) {
 	string_static_trim_right(string);
 }
 
+//---------------------------------------------------------------------------
+int string_split_size(char** matriz){
+	int i;
+	for (i=0;matriz[i]!=NULL;i++);
+	return i;
+}
+
+//---------------------------------------------------------------------------
+int contains(void* elem, t_list* list){
+	int _eq(void* any_elem){
+		return elem == any_elem;
+	}
+	return list_any_satisfy(list, (void*) _eq);
+}

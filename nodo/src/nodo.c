@@ -76,6 +76,7 @@ int esperar_instrucciones_job(int *);
 int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
+int enviar_tmp(int);
 void inicializar_mutexs();
 void finalizar_mutexs();
 
@@ -186,9 +187,12 @@ int esperar_instrucciones_del_filesystem(int *socket){
 			break;
 
 		case READ_RESULT_JOB: //XXX
-//			path_completo = string_from_format("%s/%s",path_temporales,nombre_result);
-
-//			free(path_completo);
+			if (enviar_tmp(*socket) <=0){
+				log_error(logger, "no se pudo enviar el .tmp");
+			}
+			else {
+					log_info(logger, "Se envio correctamente el .tmp al MDFs");
+				}
 			break;
 
 		default:
@@ -259,6 +263,40 @@ int enviar_bloque(int socket) {
 		pthread_mutex_lock(&mutex[nroBloque]);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
 		pthread_mutex_unlock(&mutex[nroBloque]);
+		return result;
+}
+//---------------------------------------------------------------------------
+
+int enviar_tmp(int socket) {
+
+	int result = 1;
+    char* nombreArchivo;
+    char* path_completo;
+    char *tmp;
+		result = (result > 0) ? recibir(socket, &nombreArchivo) : result;
+		path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
+
+		int fd;
+	    struct stat sbuf;
+			log_info(logger, "inicio de mapeo");
+
+			if ((fd = open(path_completo, O_RDWR)) == -1) {
+				perror("open()");
+				exit(1);
+			}
+			if (fstat(fd, &sbuf) == -1) {
+				perror("fstat()");
+			}
+			tmp = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+					fd, 0);
+			if (tmp == (caddr_t) (-1)) {
+				perror("mmap");
+				exit(1);
+			}
+			log_info(logger,"mapeo correcto");
+
+		result = (result > 0) ? enviar_string(socket, &tmp[0]) : result;
+		free(path_completo);
 		return result;
 }
 //---------------------------------------------------------------------------

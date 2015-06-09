@@ -9,6 +9,7 @@
 #define CONNECTIONLIB_H_
 
 #include <commons/config.h>
+#include <commons/collections/list.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <arpa/inet.h>
@@ -32,6 +33,7 @@ t_buffer* buffer_create_with_protocol(uint32_t protocolo);
 void buffer_add_string(t_buffer* self, char *string_to_add);
 void buffer_add_int(t_buffer* self, uint32_t int_to_add);
 int send_protocol_in_order(int socket, uint32_t protocol);
+int send_int_in_order(int socket, uint32_t entero);
 int send_buffer_and_destroy(int socket, t_buffer* self);
 void buffer_destroy(t_buffer* self);
 
@@ -41,15 +43,15 @@ int receive_int_in_order(int socket, uint32_t *number);
 uint32_t receive_protocol_in_order(int socket);
 
 
-uint32_t recibir_protocolo(int socket);
-int enviar_protocolo(int socket, uint32_t protocolo);
-int enviar_string(int socket, char *string);
-int enviar_int(int socket, uint32_t numero);
-
-int enviar_without_size(int socket, void *buffer, uint32_t size_buffer);
-int enviar(int socket, void *buffer, uint32_t size_buffer);
-int recibir(int socket, void *buffer);
-int recibir_dinamic_buffer(int socket, void** buffer);
+//uint32_t recibir_protocolo(int socket);
+//int enviar_protocolo(int socket, uint32_t protocolo);
+//int enviar_string(int socket, char *string);
+//int enviar_int(int socket, uint32_t numero);
+int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer);
+int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer);
+//int enviar(int socket, void *buffer, uint32_t size_buffer);
+//int recibir(int socket, void *buffer);
+//int recibir_dinamic_buffer(int socket, void** buffer);
 char* get_IP();
 
 int solicitarConexionCon(char* server_ip, int server_port);
@@ -68,5 +70,9 @@ void leerStdin(char *leido, int maxLargo);
 void string_static_trim_left(char* string);
 void string_static_trim_right(char* string);
 void string_static_trim(char* string);
+
+int contains(void* elem, t_list* list);
+int string_split_size(char** matriz);
+
 
 #endif /* CONNECTIONLIB_H_ */

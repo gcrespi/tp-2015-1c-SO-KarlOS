@@ -250,3 +250,11 @@
 [INFO] 16:39:17:589 NODO/(3483:3484): Se cargo correctamente el bloque al nodo
 [INFO] 16:39:17:589 NODO/(3483:3484): Se cargo correctamente el bloque al nodo
 [INFO] 16:39:17:590 NODO/(3483:3484): Se cargo correctamente el bloque al nodo
+[DEBUG] 16:46:13:420 NODO/(3634:3634): Solicitando conexión con MDFS...
+[INFO] 16:46:13:465 NODO/(3634:3634): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 16:46:13:467 NODO/(3634:3634): inicio de mapeo
+[INFO] 16:46:13:470 NODO/(3634:3634): mapeo correcto
+[INFO] 16:46:13:478 NODO/(3634:3634): Se envio correctamente info nodo
+[DEBUG] 16:46:13:489 NODO/(3634:3634): Obteniendo Puerto para Escuchar Jobs...
+[INFO] 16:46:13:493 NODO/(3634:3635): Esperando Instruccion FS
+[DEBUG] 16:46:13:499 NODO/(3634:3634): Puerto para Escuchar Jobs Obtenido

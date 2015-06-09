@@ -3,6 +3,7 @@
 *.ko
 *.obj
 *.elf
+*.d
 
 # Precompiled Headers
 *.gch
@@ -32,3 +33,6 @@
 *.dSYM/
 
 *.log
+*.dat
+*.*~
+/nodo2/

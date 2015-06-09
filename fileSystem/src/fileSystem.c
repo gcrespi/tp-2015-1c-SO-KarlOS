@@ -189,7 +189,7 @@ int arch_id_counter; //Se incrementa cada vez que s hace un upload
 struct t_dir* root;
 struct t_dir* dir_actual;
 
-int main(void) {                                         //TODO aca esta el main
+int main(void) {
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	preparar_fs ();
@@ -455,14 +455,6 @@ int any_nodo_with_ID(int id, t_list* list){
 	return list_any_satisfy(list, (void*) _eq_ID);
 }
 
-//---------------------------------------------------------------------------
-int contains(void* elem, t_list* list){
-	int _eq(void* any_elem){
-		return elem == any_elem;
-	}
-	return list_any_satisfy(list, (void*) _eq);
-}
-
 							 //DESTROYERS
 //---------------------------------------------------------------------------
 void info_nodo_destroy(struct info_nodo* self){
@@ -517,7 +509,7 @@ int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index
 	filtered_list = list_filter(listaNodos, (void*) _disp_and_not_used);
 	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
 		int amount_clean_n1 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
-		int amount_clean_n2 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
+		int amount_clean_n2 = kbitarray_amount_bits_clean(n2->bloquesLlenos);
 		return amount_clean_n1 > amount_clean_n2;
 	}
 	list_sort(filtered_list, (void*) _by_more_free_space);
@@ -546,29 +538,29 @@ int first_free_block(struct t_nodo* nodo){
 }
 
 //---------------------------------------------------------------------------
-int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {
-	int e1, e2, e3;
+int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {//TESTME
+	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
-	e1 = enviar_protocolo(socket_nodo, WRITE_BLOCK);
-		if(e1==-1)return -1;
-	e2 = enviar_int(socket_nodo, index_set);
-		if(e2==-1)return -1;
-	e3 = enviar(socket_nodo, &data[block_start], (block_end-block_start)+1);
-		if(e3==-1)return -1;
-	return 0;
+
+	t_buffer* write_block_buff = buffer_create_with_protocol(WRITE_BLOCK);
+	buffer_add_int(write_block_buff, index_set);
+	result = send_buffer_and_destroy(socket_nodo,write_block_buff);
+	result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start], (block_end-block_start)+1) : result;
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
-int recv_block(char** data, struct t_nodo* nodo, int index_set) {
-	int e1, e2, e3;
+int recv_block(char** data, struct t_nodo* nodo, int index_set) {//TESTME
+	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
-	e1 = enviar_protocolo(socket_nodo, READ_BLOCK);
-		if(e1==-1)return -1;
-	e2 = enviar_int(socket_nodo, index_set);
-		if(e2==-1)return -1;
-	e3 = recibir_dinamic_buffer(socket_nodo, (void**) data);
-		if(e3==-1)return -1;
-	return 0;
+
+	t_buffer* read_block_buff = buffer_create_with_protocol(READ_BLOCK);
+	buffer_add_int(read_block_buff, index_set);
+	result = send_buffer_and_destroy(socket_nodo,read_block_buff);
+	result = (result > 0) ? receive_dinamic_array_in_order(socket_nodo, (void**) data) : result;
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -598,7 +590,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 				list_destroy(list_used);
 				return -1;
 			}
-			if (send_block(data,nodo_disp,index_set,block_start,block_end)==-1) {
+			if (send_block(data,nodo_disp,index_set,block_start,block_end)<=0) {
 				list_destroy(list_used);
 				return -1;
 			}
@@ -672,7 +664,7 @@ int copy_block(struct t_bloque* block){
 		puts("error: no hay ningun nodo disponible");
 		return -1;
 	}
-	if(send_block(data,send_nodo,index_set,0,string_length(data)-1)==-1){
+	if(send_block(data,send_nodo,index_set,0,string_length(data)-1)<=0){
 		list_destroy(list_used);
 		free(data);
 		return -1;
@@ -827,13 +819,6 @@ struct t_dir* get_dir_from_path(char* path){ //Si hay error devuelve NULL
 	}
 	free(dir_name);
 	return dir;
-}
-
-//---------------------------------------------------------------------------
-int string_split_size(char** matriz){ //Todo <- esto esta bueno para agregarlo a la lib..
-	int i;
-	for (i=0;matriz[i]!=NULL;i++);
-	return i;
 }
 
 //---------------------------------------------------------------------------

@@ -160,11 +160,10 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
 	log_info(logger, "Esperando Instruccion FS");
-	//tarea = recibir_protocolo(*socket);
 
     do{
 
-    	tarea = recibir_protocolo(*socket);
+    	tarea = receive_protocol_in_order(*socket);
 
 	    switch (tarea) {
 
@@ -211,7 +210,7 @@ int esperar_instrucciones_job(int *socket_job){
 	uint32_t tarea;
 	log_info(logger, "Esperando Instruccion Job");
 	do{
-		tarea = recibir_protocolo(*socket_job);
+		tarea = receive_protocol_in_order(*socket_job);
 		//Puse algunas como para tener una idea, no se si quedaría otra tarea por recibir del JOB
 		//O si tendría la misma forma que la esperar_instruccion_del_filesystem.
 		switch (tarea) {
@@ -243,14 +242,15 @@ int esperar_instrucciones_job(int *socket_job){
 int recibir_Bloque(int socket) {
 
 	int result = 1;
-    int nroBloque;
+    uint32_t nroBloque;
     int longInfo;
-		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock( &mutex[nroBloque] );
-		result = (result > 0) ? longInfo=recibir(socket, &data[nroBloque*block_size]) : result;
-		data[nroBloque*block_size + longInfo]='\0';
-		pthread_mutex_unlock( &mutex[nroBloque] );
-		return result;
+
+    result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
+	pthread_mutex_lock( &mutex[nroBloque] );
+	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[nroBloque*block_size]) : result;
+	data[nroBloque*block_size + longInfo]='\0';
+	pthread_mutex_unlock( &mutex[nroBloque] );
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -258,12 +258,15 @@ int recibir_Bloque(int socket) {
 int enviar_bloque(int socket) {
 
 	int result = 1;
-    int nroBloque;
-		result = (result > 0) ? recibir(socket, &nroBloque) : result;
-		pthread_mutex_lock(&mutex[nroBloque]);
-		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
-		pthread_mutex_unlock(&mutex[nroBloque]);
-		return result;
+    uint32_t nroBloque;
+
+    result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
+    uint32_t largoBloque = strlen(&data[nroBloque*block_size]);
+
+    pthread_mutex_lock(&mutex[nroBloque]);
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque) : result;
+	pthread_mutex_unlock(&mutex[nroBloque]);
+	return result;
 }
 //---------------------------------------------------------------------------
 
@@ -273,31 +276,33 @@ int enviar_tmp(int socket) {
     char* nombreArchivo;
     char* path_completo;
     char *tmp;
-		result = (result > 0) ? recibir(socket, &nombreArchivo) : result;
-		path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
 
-		int fd;
-	    struct stat sbuf;
-			log_info(logger, "inicio de mapeo");
+	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &nombreArchivo) : result;
+	path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
 
-			if ((fd = open(path_completo, O_RDWR)) == -1) {
-				perror("open()");
-				exit(1);
-			}
-			if (fstat(fd, &sbuf) == -1) {
-				perror("fstat()");
-			}
-			tmp = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-					fd, 0);
-			if (tmp == (caddr_t) (-1)) {
-				perror("mmap");
-				exit(1);
-			}
-			log_info(logger,"mapeo correcto");
+	int fd;
+	struct stat sbuf;
+	log_info(logger, "inicio de mapeo");
 
-		result = (result > 0) ? enviar_string(socket, &tmp[0]) : result;
-		free(path_completo);
-		return result;
+	if ((fd = open(path_completo, O_RDWR)) == -1) {
+		perror("open()");
+		exit(1);
+	}
+	if (fstat(fd, &sbuf) == -1) {
+		perror("fstat()");
+	}
+	tmp = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+			fd, 0);
+	if (tmp == (caddr_t) (-1)) {
+		perror("mmap");
+		exit(1);//XXX extraer a funcion
+	}
+	log_info(logger,"mapeo correcto");
+
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &tmp[0], sbuf.st_size) : result;
+	free(path_completo);
+	free(nombreArchivo);
+	return result;
 }
 //---------------------------------------------------------------------------
 

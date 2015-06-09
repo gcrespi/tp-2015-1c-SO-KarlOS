@@ -196,3 +196,11 @@
 [DEBUG] 02:09:48:587 NODO/(4234:4234): Solicitando conexión con MDFS...
 [INFO] 02:09:48:609 NODO/(4234:4234): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
 [INFO] 02:09:48:611 NODO/(4234:4234): inicio de mapeo
+[DEBUG] 02:15:04:938 NODO/(4300:4300): Solicitando conexión con MDFS...
+[INFO] 02:15:04:972 NODO/(4300:4300): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 02:15:04:975 NODO/(4300:4300): inicio de mapeo
+[INFO] 02:15:04:978 NODO/(4300:4300): mapeo correcto
+[INFO] 02:15:04:987 NODO/(4300:4300): Se envio correctamente info nodo
+[DEBUG] 02:15:04:989 NODO/(4300:4300): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 02:15:04:998 NODO/(4300:4300): Puerto para Escuchar Jobs Obtenido
+[INFO] 02:15:04:999 NODO/(4300:4301): Esperando Instruccion FS

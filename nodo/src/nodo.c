@@ -72,6 +72,7 @@ void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int*);
+int esperar_instrucciones_job(int *);
 int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
@@ -199,7 +200,40 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 
 }
+//---------------------------------------------------------------------------
+//Si, es un poco de abuso de reutilización de código, obviamente cambia lo que te paresca.
+int esperar_instrucciones_job(int *socket_job){
+	//XXX Franco estuvo aqui! función en progreso...
+	uint32_t tarea;
+	log_info(logger, "Esperando Instruccion Job");
+	do{
+		tarea = recibir_protocolo(*socket_job);
+		//Puse algunas como para tener una idea, no se si quedaría otra tarea por recibir del JOB
+		//O si tendría la misma forma que la esperar_instruccion_del_filesystem.
+		switch (tarea) {
+		case ORDER_MAP:
+			if (recibir_Bloque(*socket_job) <=0) {
+				log_error(logger, "no se pudo realizar rutina de map");
+			}
+			else {
+				log_info(logger, "Se realizó correctamente la rutina map");
+			}
+			break;
+		case ORDER_REDUCE:
+			if (enviar_bloque(*socket_job) <=0){
+				log_error(logger, "no se pudo realizar rutina reduce");
+			}
+			else {
+				log_info(logger, "Se realizó correctamente la rutina reduce");
+			}
+			break;
 
+		default:
+			return -1;
+		}
+	} while(tarea != DISCONNECTED); //Aca no se, el job en algun momento se desconecta? Tal vez el protocolo (tarea) sea otro de los de la conectionlib.h
+	return tarea;
+}
 //---------------------------------------------------------------------------
 
 int recibir_Bloque(int socket) {

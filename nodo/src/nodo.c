@@ -72,32 +72,28 @@ void mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int*);
+int esperar_instrucciones_job(int *);
 int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
+int enviar_tmp(int);
+void inicializar_mutexs();
+void finalizar_mutexs();
 
 //Main
 int main(void) {
-	int socket_fs,i,listener_job; // file descriptor del FS
+	int socket_fs,listener_job; // file descriptor del FS
+
+	if((sem_init(&semaforo1, 0, 1))==-1){
+		perror("semaphore");
+		exit(1);
+	}
 
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
 	levantar_arch_conf_nodo();
 
-	mutex = malloc(sizeof(pthread_mutex_t)*conf.cant_bloques);
-
-	for(i=0; i<conf.cant_bloques; i++) {
-		pthread_mutex_init(&mutex[i],NULL);
-	}
-
-
-	if((sem_init(&semaforo1, 0, 1))==-1){
-			perror("semaphore");
-			exit(1);
-		}
-
-
-
+    inicializar_mutexs();
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
@@ -134,10 +130,7 @@ int main(void) {
 
 	pthread_join(thread2, NULL);
 
-	for(i=0; i<conf.cant_bloques; i++) {
-		pthread_mutex_destroy(&mutex[i]);
-	}
-	free(mutex);
+	finalizar_mutexs();
 
 	log_destroy(logger);
 	return EXIT_SUCCESS;
@@ -194,9 +187,12 @@ int esperar_instrucciones_del_filesystem(int *socket){
 			break;
 
 		case READ_RESULT_JOB: //XXX
-//			path_completo = string_from_format("%s/%s",path_temporales,nombre_result);
-
-//			free(path_completo);
+			if (enviar_tmp(*socket) <=0){
+				log_error(logger, "no se pudo enviar el .tmp");
+			}
+			else {
+					log_info(logger, "Se envio correctamente el .tmp al MDFs");
+				}
 			break;
 
 		default:
@@ -208,7 +204,40 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 
 }
+//---------------------------------------------------------------------------
+//Si, es un poco de abuso de reutilización de código, obviamente cambia lo que te paresca.
+int esperar_instrucciones_job(int *socket_job){
+	//XXX Franco estuvo aqui! función en progreso...
+	uint32_t tarea;
+	log_info(logger, "Esperando Instruccion Job");
+	do{
+		tarea = recibir_protocolo(*socket_job);
+		//Puse algunas como para tener una idea, no se si quedaría otra tarea por recibir del JOB
+		//O si tendría la misma forma que la esperar_instruccion_del_filesystem.
+		switch (tarea) {
+		case ORDER_MAP:
+			if (recibir_Bloque(*socket_job) <=0) {
+				log_error(logger, "no se pudo realizar rutina de map");
+			}
+			else {
+				log_info(logger, "Se realizó correctamente la rutina map");
+			}
+			break;
+		case ORDER_REDUCE:
+			if (enviar_bloque(*socket_job) <=0){
+				log_error(logger, "no se pudo realizar rutina reduce");
+			}
+			else {
+				log_info(logger, "Se realizó correctamente la rutina reduce");
+			}
+			break;
 
+		default:
+			return -1;
+		}
+	} while(tarea != DISCONNECTED); //Aca no se, el job en algun momento se desconecta? Tal vez el protocolo (tarea) sea otro de los de la conectionlib.h
+	return tarea;
+}
 //---------------------------------------------------------------------------
 
 int recibir_Bloque(int socket) {
@@ -234,6 +263,40 @@ int enviar_bloque(int socket) {
 		pthread_mutex_lock(&mutex[nroBloque]);
 		result = (result > 0) ? enviar_string(socket, &data[nroBloque*block_size]) : result;
 		pthread_mutex_unlock(&mutex[nroBloque]);
+		return result;
+}
+//---------------------------------------------------------------------------
+
+int enviar_tmp(int socket) {
+
+	int result = 1;
+    char* nombreArchivo;
+    char* path_completo;
+    char *tmp;
+		result = (result > 0) ? recibir(socket, &nombreArchivo) : result;
+		path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
+
+		int fd;
+	    struct stat sbuf;
+			log_info(logger, "inicio de mapeo");
+
+			if ((fd = open(path_completo, O_RDWR)) == -1) {
+				perror("open()");
+				exit(1);
+			}
+			if (fstat(fd, &sbuf) == -1) {
+				perror("fstat()");
+			}
+			tmp = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+					fd, 0);
+			if (tmp == (caddr_t) (-1)) {
+				perror("mmap");
+				exit(1);
+			}
+			log_info(logger,"mapeo correcto");
+
+		result = (result > 0) ? enviar_string(socket, &tmp[0]) : result;
+		free(path_completo);
 		return result;
 }
 //---------------------------------------------------------------------------
@@ -335,4 +398,23 @@ void cargarBloque(int nroBloque, char* info, int offset_byte) {
 //---------------------------------------------------------------------------
 void mostrarBloque(int nroBloque) {
 	printf("info bloque: %s\n", &(data[nroBloque * block_size]));
+}
+
+//----------------------------------------------------------------------------
+void inicializar_mutexs(void){
+	int i;
+	mutex = malloc(sizeof(pthread_mutex_t)*conf.cant_bloques);
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_init(&mutex[i],NULL);
+	}
+
+}
+//----------------------------------------------------------------------------
+void finalizar_mutexs(void){
+	int i;
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_destroy(&mutex[i]);
+	}
+	free(mutex);
+
 }

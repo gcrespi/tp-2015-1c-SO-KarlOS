@@ -75,29 +75,18 @@ int esperar_instrucciones_del_filesystem(int*);
 int solicitarConexionConFileSystem(struct conf_nodo);
 int recibir_Bloque(int);
 int enviar_bloque(int);
+void inicializar_mutexs();
+void finalizar_mutexs();
 
 //Main
 int main(void) {
-	int socket_fs,i,listener_job; // file descriptor del FS
+	int socket_fs,listener_job; // file descriptor del FS
 
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
 	levantar_arch_conf_nodo();
 
-	mutex = malloc(sizeof(pthread_mutex_t)*conf.cant_bloques);
-
-	for(i=0; i<conf.cant_bloques; i++) {
-		pthread_mutex_init(&mutex[i],NULL);
-	}
-
-
-	if((sem_init(&semaforo1, 0, 1))==-1){
-			perror("semaphore");
-			exit(1);
-		}
-
-
-
+    inicializar_mutexs();
 
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
@@ -134,10 +123,7 @@ int main(void) {
 
 	pthread_join(thread2, NULL);
 
-	for(i=0; i<conf.cant_bloques; i++) {
-		pthread_mutex_destroy(&mutex[i]);
-	}
-	free(mutex);
+	finalizar_mutexs();
 
 	log_destroy(logger);
 	return EXIT_SUCCESS;
@@ -335,4 +321,23 @@ void cargarBloque(int nroBloque, char* info, int offset_byte) {
 //---------------------------------------------------------------------------
 void mostrarBloque(int nroBloque) {
 	printf("info bloque: %s\n", &(data[nroBloque * block_size]));
+}
+
+//----------------------------------------------------------------------------
+void inicializar_mutexs(void){
+	int i;
+	mutex = malloc(sizeof(pthread_mutex_t)*conf.cant_bloques);
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_init(&mutex[i],NULL);
+	}
+
+}
+//----------------------------------------------------------------------------
+void finalizar_mutexs(void){
+	int i;
+	for(i=0; i<conf.cant_bloques; i++) {
+		pthread_mutex_destroy(&mutex[i]);
+	}
+	free(mutex);
+
 }

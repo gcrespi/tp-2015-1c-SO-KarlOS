@@ -469,6 +469,9 @@ void nodo_destroy(struct t_nodo* self){
 
 //---------------------------------------------------------------------------
 void copia_bloque_destroy(struct t_copia_bloq* self){
+	struct t_nodo* nodo;
+	nodo = find_nodo_with_ID(self->id_nodo);
+	kbitarray_clean_bit(nodo->bloquesLlenos,self->bloq_nodo);
 	free(self);
 }
 
@@ -1260,8 +1263,7 @@ void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX pre
 			int _eq_num_block(struct t_bloque* block){
 				return block->nro_bloq==num_block;
 			}
-			bloque = list_remove_by_condition(arch_aux->bloques, (void*) _eq_num_block);
-			copia_bloque_destroy(list_get(bloque->list_copias, num_copy));
+			list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num_block, (void*) bloque_destroy);
 		} else {
 			printf("%s: el archivo no existe\n",arch_aux->nombre);
 		}

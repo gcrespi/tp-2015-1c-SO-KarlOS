@@ -304,7 +304,6 @@ int recivir_info_nodo (int socket){
 	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->port_listen)) : result;
 
 	info_nodo->socket_FS_nodo = socket;
-	printf("agregando nodo: %i\n",info_nodo->id);
 	fflush(stdout);
 	list_add(list_info_nodo, info_nodo);
 
@@ -621,12 +620,15 @@ int rebuild_arch(struct t_arch* arch, int local_fd){
 			block = list_get(arch->bloques,i);
 			copy = find_copia_activa(block->list_copias);
 			nodo = find_nodo_with_ID(copy->id_nodo);
-			if(recv_block(&data,nodo,copy->bloq_nodo)!=-1){
+			if(recv_block(&data,nodo,copy->bloq_nodo)!=-1){ //FIXME pensar si esto no combiene traerlo de a poco
 				if ((write(local_fd,data,string_length(data))) == -1){
 					perror("error al escribir archivo");
+					free(data);
 					return -1;
 				}
+				free(data);
 			} else {
+				free(data);
 				return -1;
 			}
 	}

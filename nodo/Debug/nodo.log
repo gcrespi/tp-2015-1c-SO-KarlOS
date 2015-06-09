@@ -258,3 +258,56 @@
 [DEBUG] 16:46:13:489 NODO/(3634:3634): Obteniendo Puerto para Escuchar Jobs...
 [INFO] 16:46:13:493 NODO/(3634:3635): Esperando Instruccion FS
 [DEBUG] 16:46:13:499 NODO/(3634:3634): Puerto para Escuchar Jobs Obtenido
+[DEBUG] 17:05:29:529 NODO/(4888:4888): Solicitando conexión con MDFS...
+[INFO] 17:05:29:575 NODO/(4888:4888): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:05:29:577 NODO/(4888:4888): inicio de mapeo
+[INFO] 17:05:29:580 NODO/(4888:4888): mapeo correcto
+[INFO] 17:05:29:588 NODO/(4888:4888): Se envio correctamente info nodo
+[INFO] 17:05:29:601 NODO/(4888:4889): Esperando Instruccion FS
+[DEBUG] 17:05:29:604 NODO/(4888:4888): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 17:05:29:611 NODO/(4888:4888): Puerto para Escuchar Jobs Obtenido
+[INFO] 17:06:28:598 NODO/(4888:4889): Se cargo correctamente el bloque al nodo
+[INFO] 17:06:28:599 NODO/(4888:4889): Se cargo correctamente el bloque al nodo
+[INFO] 17:06:28:599 NODO/(4888:4889): Se cargo correctamente el bloque al nodo
+[INFO] 17:07:08:973 NODO/(4888:4889): Se envio correctamente el bloque al MDFs
+[INFO] 17:07:09:16 NODO/(4888:4889): Se envio correctamente el bloque al MDFs
+[INFO] 17:07:09:56 NODO/(4888:4889): Se envio correctamente el bloque al MDFs
+[DEBUG] 17:28:23:754 NODO/(5505:5505): Solicitando conexión con MDFS...
+[INFO] 17:28:23:799 NODO/(5505:5505): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:28:23:801 NODO/(5505:5505): inicio de mapeo
+[INFO] 17:28:23:804 NODO/(5505:5505): mapeo correcto
+[INFO] 17:28:23:812 NODO/(5505:5505): Se envio correctamente info nodo
+[INFO] 17:28:23:825 NODO/(5505:5506): Esperando Instruccion FS
+[DEBUG] 17:28:23:828 NODO/(5505:5505): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 17:28:23:837 NODO/(5505:5505): Puerto para Escuchar Jobs Obtenido
+[INFO] 17:29:07:720 NODO/(5505:5506): Se cargo correctamente el bloque al nodo
+[INFO] 17:29:07:721 NODO/(5505:5506): Se cargo correctamente el bloque al nodo
+[INFO] 17:29:07:722 NODO/(5505:5506): Se cargo correctamente el bloque al nodo
+[INFO] 17:29:21:249 NODO/(5505:5506): Se envio correctamente el bloque al MDFs
+[INFO] 17:29:21:293 NODO/(5505:5506): Se envio correctamente el bloque al MDFs
+[INFO] 17:29:21:341 NODO/(5505:5506): Se envio correctamente el bloque al MDFs
+[DEBUG] 17:36:33:199 NODO/(5864:5864): Solicitando conexión con MDFS...
+[INFO] 17:36:33:244 NODO/(5864:5864): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:36:33:246 NODO/(5864:5864): inicio de mapeo
+[INFO] 17:36:33:249 NODO/(5864:5864): mapeo correcto
+[INFO] 17:36:33:257 NODO/(5864:5864): Se envio correctamente info nodo
+[INFO] 17:36:33:270 NODO/(5864:5865): Esperando Instruccion FS
+[DEBUG] 17:36:33:273 NODO/(5864:5864): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 17:36:33:282 NODO/(5864:5864): Puerto para Escuchar Jobs Obtenido
+[INFO] 17:37:02:259 NODO/(5864:5865): Se cargo correctamente el bloque al nodo
+[INFO] 17:37:02:260 NODO/(5864:5865): Se cargo correctamente el bloque al nodo
+[INFO] 17:37:02:260 NODO/(5864:5865): Se cargo correctamente el bloque al nodo
+[DEBUG] 17:38:01:591 NODO/(5880:5880): Solicitando conexión con MDFS...
+[INFO] 17:38:01:638 NODO/(5880:5880): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 17:38:01:640 NODO/(5880:5880): inicio de mapeo
+[INFO] 17:38:01:643 NODO/(5880:5880): mapeo correcto
+[INFO] 17:38:01:651 NODO/(5880:5880): Se envio correctamente info nodo
+[INFO] 17:38:01:664 NODO/(5880:5881): Esperando Instruccion FS
+[DEBUG] 17:38:01:667 NODO/(5880:5880): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 17:38:01:675 NODO/(5880:5880): Puerto para Escuchar Jobs Obtenido
+[INFO] 17:38:35:591 NODO/(5880:5881): Se cargo correctamente el bloque al nodo
+[INFO] 17:38:35:592 NODO/(5880:5881): Se cargo correctamente el bloque al nodo
+[INFO] 17:38:35:592 NODO/(5880:5881): Se cargo correctamente el bloque al nodo
+[INFO] 17:38:46:125 NODO/(5880:5881): Se envio correctamente el bloque al MDFs
+[INFO] 17:38:46:168 NODO/(5880:5881): Se envio correctamente el bloque al MDFs
+[INFO] 17:38:46:208 NODO/(5880:5881): Se envio correctamente el bloque al MDFs

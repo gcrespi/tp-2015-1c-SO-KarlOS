@@ -264,7 +264,7 @@ int enviar_bloque(int socket) {
     uint32_t largoBloque = strlen(&data[nroBloque*block_size]);
 
     pthread_mutex_lock(&mutex[nroBloque]);
-	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque) : result;
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque+1) : result;
 	pthread_mutex_unlock(&mutex[nroBloque]);
 	return result;
 }
@@ -299,7 +299,10 @@ int enviar_tmp(int socket) {
 	}
 	log_info(logger,"mapeo correcto");
 
+	char barra_0 = '\0';
+
 	result = (result > 0) ? send_stream_with_size_in_order(socket, &tmp[0], sbuf.st_size) : result;
+	result = (result > 0) ? send_stream_without_size(socket, &barra_0, 1) : result;
 	free(path_completo);
 	free(nombreArchivo);
 	return result;

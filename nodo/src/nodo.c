@@ -82,6 +82,11 @@ void finalizar_mutexs();
 int main(void) {
 	int socket_fs,listener_job; // file descriptor del FS
 
+	if((sem_init(&semaforo1, 0, 1))==-1){
+		perror("semaphore");
+		exit(1);
+	}
+
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
 	levantar_arch_conf_nodo();

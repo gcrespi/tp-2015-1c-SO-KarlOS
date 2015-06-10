@@ -86,6 +86,7 @@ void inicializar_mutexs();
 void finalizar_mutexs();
 int receive_new_client_job();
 void free_hilo_job();
+void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 //void terminar_hilos();
 
 //Main
@@ -144,6 +145,7 @@ int main(void) {
 				log_error(logger, "Error al Aceptar Nuevos Jobs");
 				exit(-1);
 			}
+			   printf("\n hilos de job... \n");
 
 			if (receive_new_client_job(job->sockfd)) {
 				list_add(lista_jobs, job);
@@ -166,12 +168,13 @@ int main(void) {
 
 	//esperar_instrucciones_job();
 
-	free_conf_nodo();
 
+
+	list_iterate(lista_jobs, (void *) esperar_finalizacion_hilo_conex_job);
 	pthread_join(thread2, NULL);
-
+	free_conf_nodo();
 	finalizar_mutexs();
-
+	free (lista_jobs);
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
@@ -498,4 +501,13 @@ void finalizar_mutexs(void){
 	}
 	free(mutex);
 
+}
+
+//---------------------------------------------------------------------------
+void esperar_finalizacion_hilo_conex_job(t_hilo_job* jop) {
+	void* ret_recep;
+
+	if (pthread_join(*(jop->thr), &ret_recep) != 0) {
+		printf("Error al hacer join del hilo\n");
+	}
 }

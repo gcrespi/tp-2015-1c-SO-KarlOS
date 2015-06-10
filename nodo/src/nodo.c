@@ -139,7 +139,7 @@ int main(void) {
 	while (bandera) {
 			job = malloc(sizeof(t_hilo_job));
 			job->thr = malloc(sizeof(pthread_t));
-
+            printf("Esperando hilos de job...");
 			if ((job->sockfd = aceptarCliente(listener_job, &(job->socketaddr_cli))) == -1) {
 				log_error(logger, "Error al Aceptar Nuevos Jobs");
 				exit(-1);

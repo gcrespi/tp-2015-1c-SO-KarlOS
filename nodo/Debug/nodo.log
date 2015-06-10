@@ -258,3 +258,15 @@
 [DEBUG] 16:46:13:489 NODO/(3634:3634): Obteniendo Puerto para Escuchar Jobs...
 [INFO] 16:46:13:493 NODO/(3634:3635): Esperando Instruccion FS
 [DEBUG] 16:46:13:499 NODO/(3634:3634): Puerto para Escuchar Jobs Obtenido
+[DEBUG] 16:20:51:808 NODO/(3940:3940): Solicitando conexión con MDFS...
+[ERROR] 16:20:51:821 NODO/(3940:3940): Conexión con MDFS FALLIDA!!! IP: 127.0.0.1, Puerto: 5555
+[DEBUG] 16:23:22:668 NODO/(4018:4018): Solicitando conexión con MDFS...
+[INFO] 16:23:22:689 NODO/(4018:4018): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 16:23:22:690 NODO/(4018:4018): inicio de mapeo
+[INFO] 16:23:22:690 NODO/(4018:4018): mapeo correcto
+[INFO] 16:23:22:694 NODO/(4018:4018): Se envio correctamente info nodo
+[DEBUG] 16:23:22:697 NODO/(4018:4018): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 16:23:22:700 NODO/(4018:4018): Puerto para Escuchar Jobs Obtenido
+[INFO] 16:23:22:702 NODO/(4018:4019): Esperando Instruccion FS
+[INFO] 16:25:09:244 NODO/(4018:4019): Se cargo correctamente el bloque al nodo
+[INFO] 16:27:27:505 NODO/(4018:4019): Se envio correctamente el bloque al MDFs

@@ -29,7 +29,7 @@ all: nodo
 nodo: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross GCC Linker'
-	gcc -L"/home/utnso/git/tp-2015-1c-karlos/connectionlib/Debug" -o "nodo" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc -L"/home/utnso/tp-2015-1c-karlos/connectionlib/Debug" -o "nodo" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

@@ -311,8 +311,6 @@ int recivir_info_nodo (int socket){
 	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->port_listen)) : result;
 
 	info_nodo->socket_FS_nodo = socket;
-	printf("agregando nodo: %i\n",info_nodo->id);
-	fflush(stdout);
 	list_add(list_info_nodo, info_nodo);
 
 	return result;
@@ -359,13 +357,12 @@ int estaDisponibleElArchivo(struct t_arch* archivo) {
 //---------------------------------------------------------------------------
 void levantar_arch_conf() {
 
-	char** properties = string_split("FS_VACIO,PUERTO_LISTEN,MIN_CANT_NODOS", ",");
+	char** properties = string_split("PUERTO_LISTEN,MIN_CANT_NODOS", ",");
 	t_config* conf_arch = config_create("fs.cfg");
 
-	if (has_all_properties(3, properties, conf_arch)) {
-		conf.fs_vacio = config_get_int_value(conf_arch,properties[0]);
-		conf.puerto_listen = config_get_int_value(conf_arch,properties[1]);
-		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[2]);
+	if (has_all_properties(2, properties, conf_arch)) {
+		conf.puerto_listen = config_get_int_value(conf_arch,properties[0]);
+		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[1]);
 	} else {
 //		log_error(paranoid_log, "Faltan propiedades en archivo de Configuración");//FIXME tirar cartel de error
 		exit(-1);
@@ -386,12 +383,8 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 //---------------------------------------------------------------------------
 void preparar_fs () {
 	listaNodos = list_create();
-	if(conf.fs_vacio){//FIXME sacar fs_vacio
-		set_root();
-		arch_id_counter = 0;
-	} else {
-		// ToDo levantar toda la informacion persistida
-	}
+	set_root();
+	arch_id_counter = 0;
 }
 
 //---------------------------------------------------------------------------

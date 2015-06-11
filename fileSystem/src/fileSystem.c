@@ -153,7 +153,7 @@ void upload(char*, char*);
 void download(char*, char*);
 void md5(char*);
 void blocks();
-void rmblock(char*,char*,char*);
+void rmblock(char*,char*);
 void cpblock(char*,char*);
 void lsrequest();
 void lsnode();
@@ -204,16 +204,16 @@ int main(void) {
 		end = execute_command(command);
 	} while(!end);
 
+	pthread_cancel(t_listener);
 	dir_destroy(root);
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
-	pthread_join(t_listener, NULL);
+	pthread_join(t_listener,NULL);
 
 	return EXIT_SUCCESS;
 }
 
 //---------------------------------------------------------------------------
 void hilo_listener() {
-	list_info_nodo = list_create();
 
 	fd_set master; // Nuevo set principal
 	fd_set read_fds; // Set temporal para lectura
@@ -222,10 +222,16 @@ void hilo_listener() {
 	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
 	struct sockaddr_in sockaddr_listener, sockaddr_cli;
 	setSocketAddr(&sockaddr_listener);
-
 	int listener = socket(AF_INET, SOCK_STREAM, 0);
 	int socketfd_cli;
 	int yes = 1;
+
+	void cleanup() {
+		close(listener);
+		list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+	}
+	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
+
 	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
 			== -1) {
 		perror("setsockopt");
@@ -242,9 +248,11 @@ void hilo_listener() {
 	}
 
 	FD_SET(listener, &master);
-	FD_SET(STDIN_FILENO, &master);
+	//FD_SET(STDIN_FILENO, &master);
 	fd_max = listener;
 	int sin_size = sizeof(struct sockaddr_in);
+
+	list_info_nodo = list_create();
 
 	int i;
 	while(!end){
@@ -268,8 +276,7 @@ void hilo_listener() {
 		}
 	}
 
-	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-	close(listener);
+	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
 }
 
 //---------------------------------------------------------------------------
@@ -317,14 +324,6 @@ int estaActivoNodo(int nro_nodo) {
 		return (nro_nodo == nodo->id_nodo) && (nodo->estado);
 	}
 	return list_any_satisfy(listaNodos, (void*) _esta_activo);
-}
-
-//---------------------------------------------------------------------------
-struct t_copia_bloq* find_copia_activa(t_list* lista_de_copias){
-	int _esta_activa(struct t_copia_bloq* copy){
-		return estaActivoNodo(copy->id_nodo);
-	}
-	return list_find(lista_de_copias, (void*) _esta_activa);
 }
 
 //---------------------------------------------------------------------------
@@ -424,6 +423,22 @@ struct t_arch* find_arch_with_name(char* name, t_list* list){
 }
 
 //---------------------------------------------------------------------------
+struct t_bloque* find_block_with_num(int num, t_list* list){
+	int _eq_num(struct t_bloque* block){
+		return block->nro_bloq==num;
+	}
+	return list_find(list, (void*) _eq_num);
+}
+
+//---------------------------------------------------------------------------
+struct t_copia_bloq* find_copia_activa(t_list* lista_de_copias){
+	int _esta_activa(struct t_copia_bloq* copy){
+		return estaActivoNodo(copy->id_nodo);
+	}
+	return list_find(lista_de_copias, (void*) _esta_activa);
+}
+
+//---------------------------------------------------------------------------
 struct t_nodo* find_nodo_with_ID(int id){
 	int _eq_ID(struct t_nodo* nodo){
 		return nodo->id_nodo==id;
@@ -453,6 +468,14 @@ int any_nodo_with_ID(int id, t_list* list){
 		return nodo->id_nodo==id;
 	}
 	return list_any_satisfy(list, (void*) _eq_ID);
+}
+
+//---------------------------------------------------------------------------
+int any_block_with_num(int num, t_list* list){
+	int _eq_num(struct t_bloque* block){
+		return block->nro_bloq==num;
+	}
+	return list_any_satisfy(list, (void*) _eq_num);
 }
 
 							 //DESTROYERS
@@ -888,7 +911,7 @@ char execute_command(char* command){
 		case 14: md5(subcommands[1]); break;
 
 		case 15: blocks(subcommands[1]); break;
-		case 16: rmblock(subcommands[1],subcommands[2],subcommands[3]); break;
+		case 16: rmblock(subcommands[1],subcommands[2]); break;
 		case 17: cpblock(subcommands[1],subcommands[2]); break;
 
 		case 18: lsrequest(); break;
@@ -926,7 +949,7 @@ void help(){
 	puts(BOLD" download (MDFS path file) (local path file)"NORMAL" -> Copia el archivo del MDFS (MDFS path file) al filesystem local (local path file).");
 	puts(BOLD" md5 (path file)"NORMAL" -> Solicita el MD5 del archivo path (file).");
 	puts(BOLD" blocks (path file)"NORMAL" -> Muestra los bloques que componen el archivo (path file).");
-	puts(BOLD" rmblock (num block) (num copy) (path file)"NORMAL" -> Elimina el bloque nro (num block) copia nro (num copy) del archivo (path file).");
+	puts(BOLD" rmblock (num block) (path file)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
 	puts(BOLD" cpblock (num block) (path file)"NORMAL" -> Copia el bloque nro (num block) del archivo (path file) en un nodo disponoble.");
 	puts(BOLD" lsrequest"NORMAL" -> Lista los nodos que solicitan agregarse.");
 	puts(BOLD" lsnode"NORMAL" -> Lista los nodos actualmente disponible.");
@@ -1152,11 +1175,11 @@ void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo mu
 //---------------------------------------------------------------------------
 void upload(char* local_path, char* mdfs_path){
 	puts("Procesando...");
-	int local_fd, blocks_sent =0, send_ok=1; //desinicializar todo
+	int local_fd, blocks_sent =0, send_ok;
 	struct stat file_stat;
 	char *data, *arch_name;
 	struct t_dir *parent_dir;
-	t_list* list_blocks = list_create();
+	t_list* list_blocks;
 
 	if(local_path!=NULL && mdfs_path!=NULL) {
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
@@ -1167,6 +1190,7 @@ void upload(char* local_path, char* mdfs_path){
 				perror("mmap");
 				exit(1);
 			}
+			list_blocks = list_create();
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
 
 			if (close(local_fd) == -1) perror("close");
@@ -1175,14 +1199,20 @@ void upload(char* local_path, char* mdfs_path){
 				if(parent_dir!=NULL) {
 					if(is_valid_arch_name(arch_name, parent_dir)) {
 						list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
+						puts(" OK");
 					} else {
 						printf("%s: no es un nombre valido\n",arch_name);
 						free(arch_name);
+						list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 					}
 				} else {
 					printf("%s: el directorio no existe\n",mdfs_path);
 					free(arch_name);
+					list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 				}
+			} else {
+				puts("error: el archivo no se subio correctamente");
+				list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 			}
 		} else {
 			perror("Error abriendo el archivo");
@@ -1194,18 +1224,19 @@ void upload(char* local_path, char* mdfs_path){
 
 //---------------------------------------------------------------------------
 void download(char* arch_path, char* local_path){
-	puts("Procesando...");
+	printf("Procesando...");
 	struct t_arch* arch_aux;
 	int local_fd;
 	if(arch_path==NULL){
 		puts("download: falta un operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
-		if(todosLosBloquesDelArchivoDisponibles(arch_aux)){
+		if(estaDisponibleElArchivo(arch_aux)){
 			if ((local_fd = open(local_path, O_CREAT | O_RDWR)) != -1) {
 
 				rebuild_arch(arch_aux,local_fd);
 
 				if (close(local_fd) == -1) perror("close");
+				puts(" OK");
 			} else {
 				perror("error al crear el archivo");
 			}
@@ -1225,13 +1256,13 @@ void md5(char* arch_path){
 //---------------------------------------------------------------------------
 void blocks(char* arch_path){
 	struct t_arch* arch_aux;
-	struct t_bloque* block;
 	int i,j;
 	if(arch_path==NULL){
 		puts("blocks: falta un archivo como operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
-		for(i=0;i<arch_aux->cant_bloq;i++){
-			block = list_get(arch_aux->bloques,i); //FIXME al borrar uno no baja la cantidad de blockes  (usar list_iterate)
+		i=0;
+		void _print_block(struct t_bloque* block){
+			block = list_get(arch_aux->bloques,i);
 			printf(" # Block: %d\n",block->nro_bloq);
 			j=0;
 			void _print_copies(struct t_copia_bloq* copy){
@@ -1239,31 +1270,34 @@ void blocks(char* arch_path){
 				j++;
 			}
 			list_iterate(block->list_copias, (void*) _print_copies);
+			i++;
 		}
+		list_iterate(arch_aux->bloques, (void*) _print_block);
 	} else {
 		printf("%s: el archivo no existe\n", arch_path);
 	}
 }
 
 //---------------------------------------------------------------------------
-void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
-	int num_block, num_copy;
+void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
+	int num_block;
 	struct t_arch* arch_aux;
-	struct t_bloque* bloque;
 	if(num_block_str==NULL){
 		puts("rmblock: falta un numero de bloque como operando");
-	} else if(num_copy_str==NULL){
-		puts("rmblock: falta un numero de copia como operando");
 	} else if(arch_path==NULL){
 		puts("rmblock: falta un archivo como operando");
 	} else {
 		num_block = strtol(num_block_str, NULL, 10);
-		num_copy = strtol(num_copy_str, NULL, 10);
 		if((arch_aux=get_arch_from_path(arch_path))!=NULL){
-			int _eq_num_block(struct t_bloque* block){
-				return block->nro_bloq==num_block;
+			if(any_block_with_num(num_block,arch_aux->bloques)){
+				int _eq_num(struct t_bloque* blk){
+					return blk->nro_bloq==num_block;
+				}
+				list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num, (void*) bloque_destroy);
+
+			} else {
+				puts("rmblock: no hay ningun bloque con ese numero");
 			}
-			list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num_block, (void*) bloque_destroy);
 		} else {
 			printf("%s: el archivo no existe\n",arch_aux->nombre);
 		}
@@ -1271,8 +1305,8 @@ void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX pre
 }
 
 //---------------------------------------------------------------------------
-void cpblock(char* num_block_str, char* arch_path){
-	puts("Procesando...");
+void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
+	printf("Procesando...");
 	int num_block;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1289,7 +1323,7 @@ void cpblock(char* num_block_str, char* arch_path){
 			bloque = list_find(arch_aux->bloques, (void*) _eq_num_block);
 			if(bloque!=NULL){
 				if(copy_block(bloque)!=-1){
-					puts("el bloque fue copiado con exito\n");
+					puts(" OK");
 				}
 			} else {
 				printf("%d: no existe en el archivo un bloque con ese numero",num_block);
@@ -1358,7 +1392,7 @@ void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
 			nuevo_nodo = malloc(sizeof(struct t_nodo));
 				nuevo_nodo->id_nodo = infnod->id;
 				nuevo_nodo->estado = infnod->nodo_nuevo;
-				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;//FIXME es innecesario
+				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
 				nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
 				nuevo_nodo->ip_listen = infnod->ip_listen;
 				nuevo_nodo->port_listen = infnod->port_listen;

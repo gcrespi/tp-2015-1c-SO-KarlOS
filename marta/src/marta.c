@@ -863,6 +863,8 @@ int main(void) {
 	}
 	log_info(paranoid_log, "Conectado a FS");
 
+	//XXX chequear disponibilidad del FS
+
 	log_debug(paranoid_log, "Obteniendo Puerto para Escuchar Jobs...");
 	if ((listener_jobs = escucharConexionesDesde("", conf.puerto_listen)) == -1) {
 		log_error(paranoid_log, "No se pudo obtener Puerto para Escuchar Jobs");

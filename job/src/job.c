@@ -223,6 +223,67 @@ void free_conf_job(conf_job* conf) {
 	free(conf->path_result_file);
 }
 
+//---------------------------------------------------------------------------
+/*
+int establecer_conexion_nodo(t_map_dest map_dest){
+
+	log_debug(paranoid_log, "Solicitando conexión con nodo...");
+		//int socketfd_Nodo = solicitarConexionCon((char*)map_dest.ip_nodo,(int) map_dest.puerto_nodo);
+		int socketfd_Nodo = solicitarConexionCon("127.0.0.1",3500);
+
+
+		if (socketfd_Nodo != -1) {
+			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+		} else {
+			log_error(paranoid_log, "Conexión con nodo FALLIDA!!! IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+			exit(-1);
+		}
+
+		int result = 0;
+		t_buffer* new_job_buff;
+
+		log_debug(paranoid_log, "Enviando Target del Job");
+
+		result = send_protocol_in_order(socketfd_Nodo, NUEVO_JOB);
+
+			if (result == -1) {
+				log_error(paranoid_log, "No se pudo enviar Target del Job");
+				exit(-1);
+			} else {
+
+
+					t_buffer* info_nodo_buffer = buffer_create_with_protocol(ORDER_MAP);
+
+					buffer_add_int(info_nodo_buffer,map_dest.block);
+					buffer_add_int(info_nodo_buffer,map_dest.id_nodo);
+					buffer_add_string(info_nodo_buffer,map_dest.temp_file_name);
+					send_buffer_and_destroy(socketfd_Nodo,info_nodo_buffer);
+			}
+
+
+
+
+	return 1;
+}
+
+
+
+
+int recibir_info_map(int socket_job){
+
+	int result = 1;
+	uint32_t nroBloque;
+	uint32_t id_nodo;
+	char* temp_file_name;
+
+	result = (result > 0) ? receive_int_in_order(socket_job, &nroBloque) : result;
+	result = (result > 0) ? receive_int_in_order(socket_job, &id_nodo) : result;
+	result = (result > 0) ? receive_static_array_in_order(socket_job, &temp_file_name) : result;
+
+	return result;
+
+}*/
+
 //###########################################################################
 int main(void) {
 

@@ -50,6 +50,12 @@ struct conf_nodo {
 	int cant_bloques;
 };
 
+typedef struct {
+	int sockfd;
+	pthread_t* thr;
+	struct sockaddr_in socketaddr_cli;
+} t_hilo_job;
+
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
@@ -65,7 +71,6 @@ pthread_mutex_t* mutex;
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
-//void solicitarConexionConFS(struct sockaddr_in*, struct info_nodo*); //conecta con el FS
 int enviar_info_nodo(int, struct info_nodo*);
 void free_conf_nodo();
 void mapearArchivo();
@@ -79,10 +84,17 @@ int enviar_bloque(int);
 int enviar_tmp(int);
 void inicializar_mutexs();
 void finalizar_mutexs();
+int receive_new_client_job();
+void free_hilo_job();
+void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
+//void terminar_hilos();
 
 //Main
 int main(void) {
-	int socket_fs,listener_job; // file descriptor del FS
+	int socket_fs,listener_job, hilos_de_job; // file descriptor del FS
+	t_hilo_job* job;
+	t_list* lista_jobs;
+	int bandera = 1;
 
 	if((sem_init(&semaforo1, 0, 1))==-1){
 		perror("semaphore");
@@ -102,8 +114,6 @@ int main(void) {
 
     mapearArchivo();
 
-	//log_debug(logger,"id: %i",info_envio.cant_bloques);
-
 	if (enviar_info_nodo(socket_fs, &info_envio) <= 0) {
 		log_error(logger, "no se pudo enviar el info nodo");
 	} else {
@@ -116,6 +126,8 @@ int main(void) {
 			exit(1);
 	}
 
+	lista_jobs = list_create();
+
 	log_debug(logger, "Obteniendo Puerto para Escuchar Jobs...");
 	if ((listener_job = escucharConexionesDesde("", conf.puerto_nodo)) == -1) {
 		log_error(logger, "No se pudo obtener Puerto para Escuchar Jobs");
@@ -124,14 +136,45 @@ int main(void) {
 		log_debug(logger, "Puerto para Escuchar Jobs Obtenido");
 	}
 
+//!programa_terminado()
+	while (bandera) {
+			job = malloc(sizeof(t_hilo_job));
+			job->thr = malloc(sizeof(pthread_t));
+            printf("\n Esperando hilos de job... \n");
+			if ((job->sockfd = aceptarCliente(listener_job, &(job->socketaddr_cli))) == -1) {
+				log_error(logger, "Error al Aceptar Nuevos Jobs");
+				exit(-1);
+			}
+			   printf("\n hilos de job... \n");
+
+			if (receive_new_client_job(job->sockfd)) {
+				list_add(lista_jobs, job);
+
+				log_info(logger, "Creación de Hilo Job");
+				if (pthread_create(job->thr, NULL, (void *) esperar_instrucciones_job, &(job->sockfd)) != 0) {
+					log_error(logger, "No se pudo crear Hilo Job");
+					exit(-1);
+				}
+
+				hilos_de_job++;
+			} else {
+				free_hilo_job(job);
+			}
+
+			if (hilos_de_job >= 3) { //XXX
+				bandera = 0;
+			}
+		}
+
 	//esperar_instrucciones_job();
 
-	free_conf_nodo();
 
+
+	list_iterate(lista_jobs, (void *) esperar_finalizacion_hilo_conex_job);
 	pthread_join(thread2, NULL);
-
+	free_conf_nodo();
 	finalizar_mutexs();
-
+	free (lista_jobs);
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
@@ -151,6 +194,42 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 	}
 
 	return socketFS;
+}
+
+//-------------------------------------------------------------------
+void free_hilo_job(t_hilo_job* job) {
+	free(job->thr);
+	free(job);
+}
+
+//----------------------------------------------------------------------------------------------------
+int receive_new_client_job(int sockjob) {
+	uint32_t prot = 0;
+
+	prot = receive_protocol_in_order(sockjob);
+
+	switch (prot) {
+
+	case NUEVO_JOB:
+		log_debug(logger, "Nuevo Job aceptado");
+		return 1;
+		break;
+
+	case DISCONNECTED:
+		log_error(logger, "Job se desconectó de forma inesperada");
+		break;
+
+	case -1:
+		log_error(logger, "No se pudo recibir new Job del Job");
+		break;
+
+	default:
+		log_error(logger, "Protocolo Inesperado %i (MaRTA PANIC!)", prot);
+		break;
+
+	}
+
+	return 0;
 }
 
 
@@ -425,4 +504,13 @@ void finalizar_mutexs(void){
 	}
 	free(mutex);
 
+}
+
+//---------------------------------------------------------------------------
+void esperar_finalizacion_hilo_conex_job(t_hilo_job* jop) {
+	void* ret_recep;
+
+	if (pthread_join(*(jop->thr), &ret_recep) != 0) {
+		printf("Error al hacer join del hilo\n");
+	}
 }

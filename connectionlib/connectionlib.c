@@ -415,3 +415,54 @@ int contains(void* elem, t_list* list){
 	}
 	return list_any_satisfy(list, (void*) _eq);
 }
+
+//---------------------------------------------------------------------------
+void* mayorSegun(void* elemento1, void* elemento2, int(*criterio)(void*)) {
+	if(criterio(elemento1) > criterio(elemento2))
+		return elemento1;
+
+	return elemento2;
+}
+
+//---------------------------------------------------------------------------
+void* menorSegun(void* elemento1, void* elemento2, int(*criterio)(void*)) {
+	if(mayorSegun(elemento1,elemento2,criterio) == elemento2)
+		return elemento1;
+
+	return elemento2;
+}
+
+//---------------------------------------------------------------------------
+void* foldl(void*(*function)(void*, void*), void* seed, t_list* list) {
+
+	void* result = seed;
+
+	void _subFunction(void* element) {
+		result = function(result, element);
+	}
+
+	list_iterate(list,_subFunction);
+
+	return result;
+}
+
+
+//---------------------------------------------------------------------------
+void* foldl1(void*(*function)(void*, void*), t_list* list) {
+
+	void* result = NULL;
+	int primero = 1;
+
+	void _subFunction(void* element) {
+		if(primero) {
+			result = element;
+			primero = 0;
+		} else {
+			result = function(result, element);
+		}
+	}
+
+	list_iterate(list,_subFunction);
+
+	return result;
+}

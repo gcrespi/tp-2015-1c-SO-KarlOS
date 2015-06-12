@@ -617,7 +617,7 @@ int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, 
 	t_buffer* write_block_buff = buffer_create_with_protocol(WRITE_BLOCK);
 	buffer_add_int(write_block_buff, index_set);
 	result = send_buffer_and_destroy(socket_nodo,write_block_buff);
-	result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start], (block_end-block_start)+1) : result;
+	result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start], block_end-block_start+1) : result;
 
 	return result;
 }
@@ -650,7 +650,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 	while(!fin){
 		block = malloc(sizeof(struct t_bloque));
 		block->list_copias = list_create();
-		block_end = block_start + BLOCK_SIZE -1;
+		block_end = block_start + BLOCK_SIZE -2;
 		if(block_end > data_last_index){
 			block_end = data_last_index;
 			fin = 1;
@@ -688,13 +688,14 @@ int rebuild_arch(struct t_arch* arch, int local_fd){
 	struct t_bloque* block;
 	struct t_nodo* nodo;
 	char* data;
-	int i;
+	int i, data_size;
 	for(i=0;i<arch->cant_bloq;i++) {
 			block = list_get(arch->bloques,i);
 			copy = find_copia_activa(block->list_copias);
 			nodo = find_nodo_with_ID(copy->id_nodo);
-			if(recv_block(&data,nodo,copy->bloq_nodo)!=-1){
-				if ((write(local_fd,data,string_length(data))) == -1){
+			data_size = recv_block(&data,nodo,copy->bloq_nodo);
+			if(data_size !=-1 ){
+				if ((write(local_fd, data, data_size)) == -1){
 					perror("error al escribir archivo");
 					return -1;
 				}
@@ -1276,7 +1277,7 @@ void download(char* arch_path, char* local_path){
 		puts("download: falta un operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
 		if(estaDisponibleElArchivo(arch_aux)){
-			if ((local_fd = open(local_path, O_CREAT | O_RDWR)) != -1) {
+			if ((local_fd = open(local_path, O_WRONLY |  O_CREAT, S_IROTH | S_IWOTH)) != -1) {
 				printf("Procesando... ");
 
 				if (rebuild_arch(arch_aux,local_fd)!=-1) printf("OK\n");

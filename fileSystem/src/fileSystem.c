@@ -359,89 +359,6 @@ void hilo_listener() {
 	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
 }
 
-////---------------------------------------------------------------------------
-//void hilo_listener() {
-//
-//	fd_set master; // Nuevo set principal
-//	fd_set read_fds; // Set temporal para lectura
-//	FD_ZERO(&master); // Vacio los sets
-//	FD_ZERO(&read_fds);
-//	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
-//	struct sockaddr_in sockaddr_listener, sockaddr_cli;
-//	setSocketAddr(&sockaddr_listener);
-//	int listener = socket(AF_INET, SOCK_STREAM, 0);
-//	int socketfd_cli;
-//	int yes = 1;
-//	struct info_nodo* infnodo;
-//	struct t_nodo* nodo;
-//
-//	void cleanup() {
-//		close(listener);
-//		list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//	}
-//	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
-//
-//	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
-//			== -1) {
-//		perror("setsockopt");
-//		exit(1);
-//	}
-//	if (bind(listener, (struct sockaddr*) &sockaddr_listener,
-//			sizeof(sockaddr_listener)) == -1) {
-//		perror("Error binding");
-//		exit(-1);
-//	}
-//	if (listen(listener, 100) == -1) {
-//		perror("Error listening");
-//		exit(-1);
-//	}
-//
-//	FD_SET(listener, &master);
-//	fd_max = listener;
-//
-//	list_info_nodo = list_create();
-//
-//	int i;
-//	while(1){
-//		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
-//		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
-//		for (i = 0; i <= fd_max; i++) {
-//			if (FD_ISSET(i, &read_fds)) {
-//
-//				if(i==listener) {
-//					if((socketfd_cli = aceptarCliente(listener,&sockaddr_cli)) <= 0) {
-//						log_error(logger,"No se pudo aceptar un cliente");
-//						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//						close(listener);
-//						exit(-1);
-//					}
-//
-////					receive_new_client_protocol(socketfd_cli);
-//
-//					if(recivir_instrucciones(socketfd_cli) <= 0) {
-//						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//						close(listener);
-//						exit(-1); //Fixme!!!
-//					}
-//					FD_SET(socketfd_cli, &master);
-//					if (socketfd_cli > fd_max)
-//						fd_max = socketfd_cli;
-//				} else {
-//					if(recivir_instrucciones(i) == 0) {
-//						if( (infnodo = find_infonodo_with_sockfd(i)) != NULL ){
-//							list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
-//						} else if (( nodo = find_nodo_with_sockfd(i)) != NULL ) {
-//							nodo->estado = DESCONECTADO;
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
-//}
-
 //---------------------------------------------------------------------------
 int recivir_instrucciones(int socket){
 	uint32_t prot;
@@ -866,7 +783,8 @@ int copy_block(struct t_bloque* block){
 	t_list* list_used;
 	struct t_nodo* recv_nodo,
 				 * send_nodo;
-	struct t_copia_bloq* copy_to_copy;
+	struct t_copia_bloq* copy_to_copy,
+					   * copied_copy;
 	int index_set;
 	char* data;
 
@@ -897,6 +815,10 @@ int copy_block(struct t_bloque* block){
 		free(data);
 		return -1;
 	}
+	copied_copy = malloc(sizeof(struct t_copia_bloq));
+		copied_copy->id_nodo = send_nodo->id_nodo;
+		copied_copy->bloq_nodo = index_set;
+	list_add(block->list_copias,copied_copy);
 	list_destroy(list_used);
 	free(data);
 	return 0;

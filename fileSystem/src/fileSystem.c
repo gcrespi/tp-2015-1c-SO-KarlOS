@@ -179,6 +179,10 @@ struct t_dir* dir_create(char*, struct t_dir*);
 struct t_arch* arch_create(char*, struct t_dir*, int, t_list*);
 void get_info_from_path(char*, char**, struct t_dir**);
 struct t_dir* get_dir_from_path(char*);
+struct info_nodo* find_infonodo_with_sockfd(int);
+struct t_nodo* find_nodo_with_sockfd(int);
+void* list_remove_elem(t_list*, void*);
+void list_destroy_elem(t_list*, void*, void*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
@@ -225,6 +229,8 @@ void hilo_listener() {
 	int listener = socket(AF_INET, SOCK_STREAM, 0);
 	int socketfd_cli;
 	int yes = 1;
+	struct info_nodo* infnodo;
+	struct t_nodo* nodo;
 
 	void cleanup() {
 		close(listener);
@@ -248,14 +254,13 @@ void hilo_listener() {
 	}
 
 	FD_SET(listener, &master);
-	//FD_SET(STDIN_FILENO, &master);
 	fd_max = listener;
 	int sin_size = sizeof(struct sockaddr_in);
 
 	list_info_nodo = list_create();
 
 	int i;
-	while(!end){
+	while(1){
 		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
 		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
 		for (i = 0; i <= fd_max; i++) {
@@ -263,14 +268,21 @@ void hilo_listener() {
 				if (i == listener) {
 					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
 					if(recivir_instrucciones(socketfd_cli) <= 0) {
-						puts("Error al recibir el info Nodo");//FIXME
 						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
 						close(listener);
-						exit(-1);
+						exit(-1); //Fixme!!!
 					}
 					FD_SET(socketfd_cli, &master);
 					if (socketfd_cli > fd_max)
 						fd_max = socketfd_cli;
+				} else {
+					if(recivir_instrucciones(i) == 0) {
+						if( (infnodo = find_infonodo_with_sockfd(i)) != NULL ){
+							list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
+						} else if (( nodo = find_nodo_with_sockfd(i)) != NULL ) {
+							nodo->estado = DESCONECTADO;
+						}
+					}
 				}
 			}
 		}
@@ -282,14 +294,14 @@ void hilo_listener() {
 //---------------------------------------------------------------------------
 int recivir_instrucciones(int socket){
 	uint32_t prot;
-//	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
-//		return -1;
-//	}
 	int result;
 
 	prot = receive_protocol_in_order(socket);
 
 	switch (prot) {
+	case DISCONNECTED:
+		return DISCONNECTED;
+		break;
 	case INFO_NODO:
 		result = recivir_info_nodo(socket);
 		break;
@@ -317,9 +329,9 @@ int recivir_info_nodo (int socket){
 }
 
 //---------------------------------------------------------------------------
-int estaActivoNodo(int nro_nodo) {
+int estaActivoNodo(int ID_nodo) {
 	int _esta_activo(struct t_nodo* nodo) {
-		return (nro_nodo == nodo->id_nodo) && (nodo->estado);
+		return (ID_nodo == nodo->id_nodo) && (nodo->estado);
 	}
 	return list_any_satisfy(listaNodos, (void*) _esta_activo);
 }
@@ -440,6 +452,22 @@ struct t_nodo* find_nodo_with_ID(int id){
 }
 
 //---------------------------------------------------------------------------
+struct info_nodo* find_infonodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct info_nodo* inodo){
+		return inodo->socket_FS_nodo == sockfd;
+	}
+	return list_find(list_info_nodo, (void*) _eq_sock);
+}
+
+//---------------------------------------------------------------------------
+struct t_nodo* find_nodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct t_nodo* nodo){
+		return nodo->socket_FS_nodo == sockfd;
+	}
+	return list_find(listaNodos, (void*) _eq_sock);
+}
+
+//---------------------------------------------------------------------------
 int any_dir_with_name(char* name, t_list* list){
 	int _eq_name(struct t_dir* direc){
 		return string_equals_ignore_case(direc->nombre,name);
@@ -469,6 +497,14 @@ int any_block_with_num(int num, t_list* list){
 		return block->nro_bloq==num;
 	}
 	return list_any_satisfy(list, (void*) _eq_num);
+}
+
+//---------------------------------------------------------------------------
+int any_infonodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct info_nodo* inodo){
+		return inodo->socket_FS_nodo == sockfd;
+	}
+	return list_any_satisfy(list_info_nodo, (void*) _eq_sock);
 }
 
 							 //DESTROYERS
@@ -511,6 +547,23 @@ void dir_destroy(struct t_dir* self){
 	free(self->nombre);
 	free(self);
 }
+
+//---------------------------------------------------------------------------
+void* list_remove_elem(t_list* list, void* elem){  //XXX uso interesante para biblioteca
+	int _eq_ptr(void* something){
+		return something==elem;
+	}
+	return list_remove_by_condition(list, (void*) _eq_ptr);
+}
+
+//---------------------------------------------------------------------------
+void list_destroy_elem(t_list* list, void* elem, void* elem_destroyer){  //XXX uso interesante para biblioteca
+	int _eq_ptr(void* something){
+		return something==elem;
+	}
+	list_remove_and_destroy_by_condition(list, (void*) _eq_ptr, elem_destroyer);
+}
+
 						//MANEJO DE ARCHIVOS
 //---------------------------------------------------------------------------
 int has_disp_block(struct t_nodo* nodo){
@@ -523,7 +576,7 @@ int has_disp_block(struct t_nodo* nodo){
 int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el nodo que tenga espacio disponible y no este en la lista de usados
 	t_list* filtered_list;
 	int _disp_and_not_used(struct t_nodo* nodo){
-		return has_disp_block(nodo) && !contains(nodo, list_used);
+		return nodo->estado==CONECTADO && has_disp_block(nodo) && !contains(nodo, list_used);
 	}
 	filtered_list = list_filter(listaNodos, (void*) _disp_and_not_used);
 	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
@@ -538,7 +591,7 @@ int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index
 	*index_set = kbitarray_find_first_clean((*the_choosen_one)->bloquesLlenos);
 	kbitarray_set_bit((*the_choosen_one)->bloquesLlenos,*index_set);
 	return 0;
-} //FIXME elegir el que tenga más bloques disponibles
+}
 
 
 
@@ -597,7 +650,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 	while(!fin){
 		block = malloc(sizeof(struct t_bloque));
 		block->list_copias = list_create();
-		block_end = block_start + BLOCK_SIZE;
+		block_end = block_start + BLOCK_SIZE -1;
 		if(block_end > data_last_index){
 			block_end = data_last_index;
 			fin = 1;
@@ -1143,7 +1196,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 }
 
 //---------------------------------------------------------------------------
-void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo muy inutil
+void renamedir(char* dir_path, char* new_name){ //XXX esto no estaria siendo muy inutil
 	struct t_dir* dir_aux;
 	char* old_name;
 	if(dir_path==NULL){
@@ -1167,7 +1220,6 @@ void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo mu
 
 //---------------------------------------------------------------------------
 void upload(char* local_path, char* mdfs_path){
-	puts("Procesando...");
 	int local_fd, blocks_sent =0, send_ok;
 	struct stat file_stat;
 	char *data, *arch_name;
@@ -1184,6 +1236,7 @@ void upload(char* local_path, char* mdfs_path){
 				exit(1);
 			}
 			list_blocks = list_create();
+			printf("Procesando... ");
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
 
 			if (close(local_fd) == -1) perror("close");
@@ -1192,7 +1245,7 @@ void upload(char* local_path, char* mdfs_path){
 				if(parent_dir!=NULL) {
 					if(is_valid_arch_name(arch_name, parent_dir)) {
 						list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
-						puts(" OK");
+						printf("OK\n");
 					} else {
 						printf("%s: no es un nombre valido\n",arch_name);
 						free(arch_name);
@@ -1217,7 +1270,6 @@ void upload(char* local_path, char* mdfs_path){
 
 //---------------------------------------------------------------------------
 void download(char* arch_path, char* local_path){
-	printf("Procesando...");
 	struct t_arch* arch_aux;
 	int local_fd;
 	if(arch_path==NULL){
@@ -1225,11 +1277,12 @@ void download(char* arch_path, char* local_path){
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
 		if(estaDisponibleElArchivo(arch_aux)){
 			if ((local_fd = open(local_path, O_CREAT | O_RDWR)) != -1) {
+				printf("Procesando... ");
 
-				rebuild_arch(arch_aux,local_fd);
+				if (rebuild_arch(arch_aux,local_fd)!=-1) printf("OK\n");
+
 
 				if (close(local_fd) == -1) perror("close");
-				puts(" OK");
 			} else {
 				perror("error al crear el archivo");
 			}
@@ -1299,7 +1352,6 @@ void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra 
 
 //---------------------------------------------------------------------------
 void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
-	printf("Procesando...");
 	int num_block;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1315,8 +1367,9 @@ void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
 			}
 			bloque = list_find(arch_aux->bloques, (void*) _eq_num_block);
 			if(bloque!=NULL){
+				printf("Procesando... ");
 				if(copy_block(bloque)!=-1){
-					puts(" OK");
+					printf("OK\n");
 				}
 			} else {
 				printf("%d: no existe en el archivo un bloque con ese numero",num_block);
@@ -1368,6 +1421,11 @@ void lsnode() {
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
 		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
 		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
+		if (ptr_nodo->estado==CONECTADO){  // <-XXX: mostrar asi o los desconectados no mostrarlos???
+			printf("  *Estado: CONECTADO\n");
+		} else {
+			printf("  *Estado: DESCONECTADO\n");
+		}
 	}
 }
 

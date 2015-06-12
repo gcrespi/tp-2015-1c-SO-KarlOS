@@ -125,10 +125,11 @@ int receive_result_map(int sockjob, t_result_map* result_map);
 int send_finished_job(int socket_job);
 int send_aborted_job(int socket_job);
 
-//************************************* Interaccion Job **************************************
+//************************************* Interaccion FS **************************************
 int receive_info_file(int socket, t_info_file* info_file);
 int solicitar_info_de_archivo(char *path_file, t_info_file* info_file);
 int locate_block_in_FS(t_info_job info_job, uint32_t id_file, uint32_t block_number, t_list* block_copies);
+int obtenerAceptacionDeFS(int socket);
 
 //***************************************** Principal *******************************************
 void terminar_hilos(); //XXX
@@ -138,7 +139,7 @@ int increment_and_take_last_job_id();
 
 int get_info_files_from_FS(char **paths_files, t_list* file_list);
 
-t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map);
+t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int sockjob);
 int plan_reduces();
@@ -367,6 +368,41 @@ int send_aborted_job(int socket_job) {
 //***************************************** Interaccion FS *******************************************
 
 //---------------------------------------------------------------------------
+int obtenerAceptacionDeFS(int socket) {
+
+	int result = send_protocol_in_order(socket,MARTA_CONNECTION_REQUEST);
+
+	result = (result > 0) ? receive_protocol_in_order(socket) : result;
+
+
+	switch(result) {
+
+		case MARTA_CONNECTION_ACCEPTED:
+			log_debug(paranoid_log,"Conexión con FS Aceptada");
+			break;
+
+		case MARTA_CONNECTION_REFUSED:
+			log_error(paranoid_log,"Conexión con FS Rechazada (Nodos insuficientes)");
+			break;
+
+		case DISCONNECTED:
+			log_error(paranoid_log, "FS se desconectó de forma inesperada");
+			break;
+
+		case -1:
+			log_error(paranoid_log, "No se pudo recibir aceptación de la Conexion");
+			break;
+
+		default:
+			log_error(paranoid_log, "Protocolo Inesperado %i (MaRTA PANIC!)", result);
+			return -1;
+			break;
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
 int receive_info_file(int socket, t_info_file* info_file) {
 
 	int prot = receive_protocol_in_order(socket);
@@ -545,7 +581,41 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list) {
 }
 
 //---------------------------------------------------------------------------
-t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map) {
+int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temp_map_list) {
+
+	t_carga_nodo* carga_nodo;
+	uint32_t carga;
+
+	int _isNodeSearched(t_carga_nodo* carga_nodo) {
+		return carga_nodo->id_nodo == block_copy->id_nodo;
+	}
+
+	pthread_mutex_lock(&node_list_mutex);
+	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+
+	if (carga_nodo == NULL) {
+		carga = 0;
+	} else {
+		carga = carga_nodo->cant_ops_en_curso;
+	}
+	pthread_mutex_unlock(&node_list_mutex);
+
+	int score = 100 - carga; //XXX revisar numero arbitrario, es la cuenta que quiero??
+
+	int _isTempMapSearched(t_temp_map* temp_map) {
+		return temp_map->id_nodo == block_copy->id_nodo;
+	}
+
+	if(combiner) {
+		score += list_count_satisfying(temp_map_list,(void*) _isTempMapSearched);
+	}
+
+	return score;
+}
+
+
+//---------------------------------------------------------------------------
+t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list) {
 
 	log_info(paranoid_log, "Planificando map del Archivo:%i Bloque: %i ", id_file, block_number);
 
@@ -560,15 +630,32 @@ t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block
 		return NULL;
 	}
 
-	selected_copy = list_get(block_copies, 0); //TODO implementar Planificador
+//	selected_copy = list_get(block_copies, 0); //TODO TESTME Planificador
 
-	self = malloc(sizeof(t_map_dest));
-	self->id_map = ++(*last_id_map);
-	self->id_nodo = selected_copy->id_nodo;
-	self->ip_nodo = selected_copy->ip_nodo;
-	self->puerto_nodo = selected_copy->puerto_nodo;
-	self->block = selected_copy->block;
-	self->temp_file_name = string_from_format("map_%i_%i.temp", info_job.id_job, self->block);
+	int _score_block_copy(t_block_copy* block_copy) {
+		return score_block_copy(block_copy, info_job.combiner, temp_list);
+	}
+
+	t_block_copy* _best_copy_option(t_block_copy* block_copy1, t_block_copy* block_copy2) {
+		return mayorSegun(block_copy1, block_copy2,(void *) _score_block_copy);
+	}
+
+	selected_copy = foldl1((void *) _best_copy_option, block_copies);
+
+
+	if(selected_copy != NULL) {
+		self = malloc(sizeof(t_map_dest));
+		self->id_map = ++(*last_id_map);
+		self->id_nodo = selected_copy->id_nodo;
+		self->ip_nodo = selected_copy->ip_nodo;
+		self->puerto_nodo = selected_copy->puerto_nodo;
+		self->block = selected_copy->block;
+		self->temp_file_name = string_from_format("map_%i_%i.temp", info_job.id_job, self->block);
+	} else {
+		log_error(paranoid_log,"No hay copias Activas del Archivo:%i Bloque: %i ", id_file, block_number);
+		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
+		return NULL;
+	}
 
 	list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
 
@@ -700,7 +787,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 
 		for (j = 0; j < file_info->amount_blocks; j++) {
 
-			map_dest = planificar_map(info_job, file_info->id_file, j, &last_id_map);
+			map_dest = planificar_map(info_job, file_info->id_file, j, &last_id_map, temp_list);
 			result = (map_dest != NULL) ? order_map_to_job(map_dest, sockjob) : -2;
 
 			if (result > 0) {
@@ -736,7 +823,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 				pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
 
 				free_map_dest(pending_map->map_dest);
-				pending_map->map_dest = planificar_map(info_job, pending_map->file->id_file, pending_map->block, &last_id_map);
+				pending_map->map_dest = planificar_map(info_job, pending_map->file->id_file, pending_map->block, &last_id_map, temp_list);
 
 				result = (pending_map->map_dest != NULL) ? order_map_to_job(pending_map->map_dest, sockjob) : -2;
 
@@ -862,6 +949,11 @@ int main(void) {
 		exit(-1);
 	}
 	log_info(paranoid_log, "Conectado a FS");
+
+	if (obtenerAceptacionDeFS(socket_fs) != MARTA_CONNECTION_ACCEPTED) {
+		log_error(paranoid_log, "No se pudo Comunicar con el FS");
+		exit(-1);
+	}
 
 	log_debug(paranoid_log, "Obteniendo Puerto para Escuchar Jobs...");
 	if ((listener_jobs = escucharConexionesDesde("", conf.puerto_listen)) == -1) {

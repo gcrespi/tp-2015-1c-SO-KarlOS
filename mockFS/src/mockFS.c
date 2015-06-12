@@ -68,6 +68,11 @@ int main(void) {
 	while(1) {
 		prot = receive_protocol_in_order(marta_sock);
 
+		if(prot == MARTA_CONNECTION_REQUEST) {
+			log_debug(paranoid_log, "Se recibio un prot: MARTA_CONNECTION_REQUEST");
+			send_protocol_in_order(marta_sock,MARTA_CONNECTION_ACCEPTED);
+		}
+
 		if(prot == INFO_ARCHIVO_REQUEST)
 		{
 			log_debug(paranoid_log, "Se recibio un prot: INFO_ARCHIVO");

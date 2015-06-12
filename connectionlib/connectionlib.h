@@ -25,7 +25,7 @@ enum protocolo {
 	DISCONNECTED, INFO_NODO, NUEVO_JOB, ORDER_MAP, ORDER_REDUCE, INFO_ARCHIVO,
 	FINISHED_JOB, ABORTED_JOB, WRITE_BLOCK, READ_BLOCK, MAP_OK, NODO_NOT_FOUND,
 	INFO_ARCHIVO_REQUEST, ARCHIVO_NO_DISPONIBLE, BLOCK_LOCATION_REQUEST, BLOCK_LOCATION,
-	LOST_BLOCK, READ_RESULT_JOB
+	LOST_BLOCK, READ_RESULT_JOB, MARTA_CONNECTION_REQUEST, MARTA_CONNECTION_ACCEPTED, MARTA_CONNECTION_REFUSED
 };
 
 t_buffer* buffer_create();
@@ -73,6 +73,10 @@ void string_static_trim(char* string);
 
 int contains(void* elem, t_list* list);
 int string_split_size(char** matriz);
+void* mayorSegun(void* elemento1, void* elemento2, int(*criterio)(void*));
+void* menorSegun(void* elemento1, void* elemento2, int(*criterio)(void*));
+void* foldl(void*(*function)(void*, void*), void* seed, t_list* list);
+void* foldl1(void*(*function)(void*, void*), t_list* list);
 
 
 #endif /* CONNECTIONLIB_H_ */

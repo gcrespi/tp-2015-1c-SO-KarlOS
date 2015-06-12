@@ -327,7 +327,9 @@ int recibir_Bloque(int socket) {
     result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
 	pthread_mutex_lock( &mutex[nroBloque] );
 	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[nroBloque*block_size]) : result;
-	data[nroBloque*block_size + longInfo]='\0';
+	if(result > 0) {
+		data[nroBloque*block_size + longInfo]='\0';
+	}
 	pthread_mutex_unlock( &mutex[nroBloque] );
 	return result;
 }
@@ -343,7 +345,7 @@ int enviar_bloque(int socket) {
     uint32_t largoBloque = strlen(&data[nroBloque*block_size]);
 
     pthread_mutex_lock(&mutex[nroBloque]);
-	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque) : result;
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque+1) : result;
 	pthread_mutex_unlock(&mutex[nroBloque]);
 	return result;
 }
@@ -374,9 +376,10 @@ int enviar_tmp(int socket) {
 			fd, 0);
 	if (tmp == (caddr_t) (-1)) {
 		perror("mmap");
-		exit(1);//XXX extraer a funcion
+		exit(1);//XXX extraer a funcion, de verdad quiero mapear esto? o leer secuencial?
 	}
 	log_info(logger,"mapeo correcto");
+
 
 	result = (result > 0) ? send_stream_with_size_in_order(socket, &tmp[0], sbuf.st_size) : result;
 	free(path_completo);

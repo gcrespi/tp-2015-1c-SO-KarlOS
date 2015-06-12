@@ -154,7 +154,7 @@ void upload(char*, char*);
 void download(char*, char*);
 void md5(char*);
 void blocks();
-void rmblock(char*,char*,char*);
+void rmblock(char*,char*);
 void cpblock(char*,char*);
 void lsrequest();
 void lsnode();
@@ -180,6 +180,10 @@ struct t_dir* dir_create(char*, struct t_dir*);
 struct t_arch* arch_create(char*, struct t_dir*, int, t_list*);
 void get_info_from_path(char*, char**, struct t_dir**);
 struct t_dir* get_dir_from_path(char*);
+struct info_nodo* find_infonodo_with_sockfd(int);
+struct t_nodo* find_nodo_with_sockfd(int);
+void* list_remove_elem(t_list*, void*);
+void list_destroy_elem(t_list*, void*, void*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
@@ -209,7 +213,9 @@ int main(void) {
 		end = execute_command(command);
 	} while(!end);
 
+	pthread_cancel(t_listener);
 	dir_destroy(root);
+
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	pthread_join(t_listener, NULL);
 	log_destroy(logger);
@@ -254,20 +260,26 @@ int receive_new_client_protocol(int socketCli) {
 
 //---------------------------------------------------------------------------
 void hilo_listener() {
-	list_info_nodo = list_create();
 
 	fd_set master; // Nuevo set principal
 	fd_set read_fds; // Set temporal para lectura
 	FD_ZERO(&master); // Vacio los sets
 	FD_ZERO(&read_fds);
 	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
-	int fd_marta;
 	struct sockaddr_in sockaddr_listener, sockaddr_cli;
 	setSocketAddr(&sockaddr_listener);
-
 	int listener = socket(AF_INET, SOCK_STREAM, 0);
 	int socketfd_cli;
 	int yes = 1;
+	struct info_nodo* infnodo;
+	struct t_nodo* nodo;
+
+	void cleanup() {
+		close(listener);
+		list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+	}
+	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
+
 	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
 			== -1) {
 		perror("setsockopt");
@@ -284,12 +296,12 @@ void hilo_listener() {
 	}
 
 	FD_SET(listener, &master);
-	FD_SET(STDIN_FILENO, &master);
 	fd_max = listener;
-	int sin_size = sizeof(struct sockaddr_in);
+
+	list_info_nodo = list_create();
 
 	int i;
-	while(!end){
+	while(1){
 		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
 		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
 		for (i = 0; i <= fd_max; i++) {
@@ -303,46 +315,43 @@ void hilo_listener() {
 						exit(-1);
 					}
 
-					receive_new_client_protocol(socketfd_cli);
+//					receive_new_client_protocol(socketfd_cli);
 
 					if(recivir_instrucciones(socketfd_cli) <= 0) {
-						puts("Error al recibir el info Nodo");//FIXME
 						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
 						close(listener);
-						exit(-1);
+						exit(-1); //Fixme!!!
 					}
 					FD_SET(socketfd_cli, &master);
 					if (socketfd_cli > fd_max)
 						fd_max = socketfd_cli;
+				} else {
+					if(recivir_instrucciones(i) == 0) {
+						if( (infnodo = find_infonodo_with_sockfd(i)) != NULL ){
+							list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
+						} else if (( nodo = find_nodo_with_sockfd(i)) != NULL ) {
+							nodo->estado = DESCONECTADO;
+						}
+					}
 				}
-						//
-//				if(i==listener) {
-////					close(fd_marta);
-//				}
-
-//					default:
-//						//XXX aca checkear si te llega un mensaje nulo de algun nodo para quitarlo de estado Conectado
-//						break;
-
 			}
 		}
 	}
 
-	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-	close(listener);
+	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
 }
 
 //---------------------------------------------------------------------------
 int recivir_instrucciones(int socket){
 	uint32_t prot;
-//	if (recv(socket, &prot, sizeof(uint32_t), 0) == -1) {
-//		return -1;
-//	}
 	int result;
 
 	prot = receive_protocol_in_order(socket);
 
 	switch (prot) {
+	case DISCONNECTED:
+		return DISCONNECTED;
+		break;
 	case INFO_NODO:
 		result = recivir_info_nodo(socket);
 		break;
@@ -364,26 +373,17 @@ int recivir_info_nodo (int socket){
 	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->port_listen)) : result;
 
 	info_nodo->socket_FS_nodo = socket;
-	fflush(stdout);
 	list_add(list_info_nodo, info_nodo);
 
 	return result;
 }
 
 //---------------------------------------------------------------------------
-int estaActivoNodo(int nro_nodo) {
+int estaActivoNodo(int ID_nodo) {
 	int _esta_activo(struct t_nodo* nodo) {
-		return (nro_nodo == nodo->id_nodo) && (nodo->estado);
+		return (ID_nodo == nodo->id_nodo) && (nodo->estado);
 	}
 	return list_any_satisfy(listaNodos, (void*) _esta_activo);
-}
-
-//---------------------------------------------------------------------------
-struct t_copia_bloq* find_copia_activa(t_list* lista_de_copias){
-	int _esta_activa(struct t_copia_bloq* copy){
-		return estaActivoNodo(copy->id_nodo);
-	}
-	return list_find(lista_de_copias, (void*) _esta_activa);
 }
 
 //---------------------------------------------------------------------------
@@ -419,13 +419,12 @@ int estaDisponibleElArchivo(struct t_arch* archivo) {
 //---------------------------------------------------------------------------
 void levantar_arch_conf() {
 
-	char** properties = string_split("FS_VACIO,PUERTO_LISTEN,MIN_CANT_NODOS", ",");
+	char** properties = string_split("PUERTO_LISTEN,MIN_CANT_NODOS", ",");
 	t_config* conf_arch = config_create("fs.cfg");
 
-	if (has_all_properties(3, properties, conf_arch)) {
-		conf.fs_vacio = config_get_int_value(conf_arch,properties[0]);
-		conf.puerto_listen = config_get_int_value(conf_arch,properties[1]);
-		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[2]);
+	if (has_all_properties(2, properties, conf_arch)) {
+		conf.puerto_listen = config_get_int_value(conf_arch,properties[0]);
+		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[1]);
 	} else {
 //		log_error(paranoid_log, "Faltan propiedades en archivo de Configuración");//FIXME tirar cartel de error
 		exit(-1);
@@ -446,12 +445,8 @@ void setSocketAddr(struct sockaddr_in* direccionDestino) {
 //---------------------------------------------------------------------------
 void preparar_fs () {
 	listaNodos = list_create();
-	if(conf.fs_vacio){//FIXME sacar fs_vacio
-		set_root();
-		arch_id_counter = 0;
-	} else {
-		// ToDo levantar toda la informacion persistida
-	}
+	set_root();
+	arch_id_counter = 0;
 }
 
 //---------------------------------------------------------------------------
@@ -483,11 +478,43 @@ struct t_arch* find_arch_with_name(char* name, t_list* list){
 }
 
 //---------------------------------------------------------------------------
+struct t_bloque* find_block_with_num(int num, t_list* list){
+	int _eq_num(struct t_bloque* block){
+		return block->nro_bloq==num;
+	}
+	return list_find(list, (void*) _eq_num);
+}
+
+//---------------------------------------------------------------------------
+struct t_copia_bloq* find_copia_activa(t_list* lista_de_copias){
+	int _esta_activa(struct t_copia_bloq* copy){
+		return estaActivoNodo(copy->id_nodo);
+	}
+	return list_find(lista_de_copias, (void*) _esta_activa);
+}
+
+//---------------------------------------------------------------------------
 struct t_nodo* find_nodo_with_ID(int id){
 	int _eq_ID(struct t_nodo* nodo){
 		return nodo->id_nodo==id;
 	}
 	return list_find(listaNodos, (void*) _eq_ID);
+}
+
+//---------------------------------------------------------------------------
+struct info_nodo* find_infonodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct info_nodo* inodo){
+		return inodo->socket_FS_nodo == sockfd;
+	}
+	return list_find(list_info_nodo, (void*) _eq_sock);
+}
+
+//---------------------------------------------------------------------------
+struct t_nodo* find_nodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct t_nodo* nodo){
+		return nodo->socket_FS_nodo == sockfd;
+	}
+	return list_find(listaNodos, (void*) _eq_sock);
 }
 
 //---------------------------------------------------------------------------
@@ -512,6 +539,22 @@ int any_nodo_with_ID(int id, t_list* list){
 		return nodo->id_nodo==id;
 	}
 	return list_any_satisfy(list, (void*) _eq_ID);
+}
+
+//---------------------------------------------------------------------------
+int any_block_with_num(int num, t_list* list){
+	int _eq_num(struct t_bloque* block){
+		return block->nro_bloq==num;
+	}
+	return list_any_satisfy(list, (void*) _eq_num);
+}
+
+//---------------------------------------------------------------------------
+int any_infonodo_with_sockfd(int sockfd) {
+	int _eq_sock(struct info_nodo* inodo){
+		return inodo->socket_FS_nodo == sockfd;
+	}
+	return list_any_satisfy(list_info_nodo, (void*) _eq_sock);
 }
 
 							 //DESTROYERS
@@ -554,6 +597,23 @@ void dir_destroy(struct t_dir* self){
 	free(self->nombre);
 	free(self);
 }
+
+//---------------------------------------------------------------------------
+void* list_remove_elem(t_list* list, void* elem){  //XXX uso interesante para biblioteca
+	int _eq_ptr(void* something){
+		return something==elem;
+	}
+	return list_remove_by_condition(list, (void*) _eq_ptr);
+}
+
+//---------------------------------------------------------------------------
+void list_destroy_elem(t_list* list, void* elem, void* elem_destroyer){  //XXX uso interesante para biblioteca
+	int _eq_ptr(void* something){
+		return something==elem;
+	}
+	list_remove_and_destroy_by_condition(list, (void*) _eq_ptr, elem_destroyer);
+}
+
 						//MANEJO DE ARCHIVOS
 //---------------------------------------------------------------------------
 int has_disp_block(struct t_nodo* nodo){
@@ -566,7 +626,7 @@ int has_disp_block(struct t_nodo* nodo){
 int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el nodo que tenga espacio disponible y no este en la lista de usados
 	t_list* filtered_list;
 	int _disp_and_not_used(struct t_nodo* nodo){
-		return has_disp_block(nodo) && !contains(nodo, list_used);
+		return nodo->estado==CONECTADO && has_disp_block(nodo) && !contains(nodo, list_used);
 	}
 	filtered_list = list_filter(listaNodos, (void*) _disp_and_not_used);
 	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
@@ -640,7 +700,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 	while(!fin){
 		block = malloc(sizeof(struct t_bloque));
 		block->list_copias = list_create();
-		block_end = block_start + BLOCK_SIZE;
+		block_end = block_start + BLOCK_SIZE -1;
 		if(block_end > data_last_index){
 			block_end = data_last_index;
 			fin = 1;
@@ -950,7 +1010,7 @@ char execute_command(char* command){
 		case 14: md5(subcommands[1]); break;
 
 		case 15: blocks(subcommands[1]); break;
-		case 16: rmblock(subcommands[1],subcommands[2],subcommands[3]); break;
+		case 16: rmblock(subcommands[1],subcommands[2]); break;
 		case 17: cpblock(subcommands[1],subcommands[2]); break;
 
 		case 18: lsrequest(); break;
@@ -988,7 +1048,7 @@ void help(){
 	puts(BOLD" download (MDFS path file) (local path file)"NORMAL" -> Copia el archivo del MDFS (MDFS path file) al filesystem local (local path file).");
 	puts(BOLD" md5 (path file)"NORMAL" -> Solicita el MD5 del archivo path (file).");
 	puts(BOLD" blocks (path file)"NORMAL" -> Muestra los bloques que componen el archivo (path file).");
-	puts(BOLD" rmblock (num block) (num copy) (path file)"NORMAL" -> Elimina el bloque nro (num block) copia nro (num copy) del archivo (path file).");
+	puts(BOLD" rmblock (num block) (path file)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
 	puts(BOLD" cpblock (num block) (path file)"NORMAL" -> Copia el bloque nro (num block) del archivo (path file) en un nodo disponoble.");
 	puts(BOLD" lsrequest"NORMAL" -> Lista los nodos que solicitan agregarse.");
 	puts(BOLD" lsnode"NORMAL" -> Lista los nodos actualmente disponible.");
@@ -1189,7 +1249,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 }
 
 //---------------------------------------------------------------------------
-void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo muy inutil
+void renamedir(char* dir_path, char* new_name){ //XXX esto no estaria siendo muy inutil
 	struct t_dir* dir_aux;
 	char* old_name;
 	if(dir_path==NULL){
@@ -1213,12 +1273,11 @@ void renamedir(char* dir_path, char* new_name){ //todo esto no estaria siendo mu
 
 //---------------------------------------------------------------------------
 void upload(char* local_path, char* mdfs_path){
-	puts("Procesando...");
-	int local_fd, blocks_sent =0, send_ok=1; //desinicializar todo
+	int local_fd, blocks_sent =0, send_ok;
 	struct stat file_stat;
 	char *data, *arch_name;
 	struct t_dir *parent_dir;
-	t_list* list_blocks = list_create();
+	t_list* list_blocks;
 
 	if(local_path!=NULL && mdfs_path!=NULL) {
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
@@ -1229,6 +1288,8 @@ void upload(char* local_path, char* mdfs_path){
 				perror("mmap");
 				exit(1);
 			}
+			list_blocks = list_create();
+			printf("Procesando... ");
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
 
 			if (close(local_fd) == -1) perror("close");
@@ -1237,14 +1298,20 @@ void upload(char* local_path, char* mdfs_path){
 				if(parent_dir!=NULL) {
 					if(is_valid_arch_name(arch_name, parent_dir)) {
 						list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
+						printf("OK\n");
 					} else {
 						printf("%s: no es un nombre valido\n",arch_name);
 						free(arch_name);
+						list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 					}
 				} else {
 					printf("%s: el directorio no existe\n",mdfs_path);
 					free(arch_name);
+					list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 				}
+			} else {
+				puts("error: el archivo no se subio correctamente");
+				list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 			}
 		} else {
 			perror("Error abriendo el archivo");
@@ -1256,16 +1323,17 @@ void upload(char* local_path, char* mdfs_path){
 
 //---------------------------------------------------------------------------
 void download(char* arch_path, char* local_path){
-	puts("Procesando...");
 	struct t_arch* arch_aux;
 	int local_fd;
 	if(arch_path==NULL){
 		puts("download: falta un operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
-		if(todosLosBloquesDelArchivoDisponibles(arch_aux)){
+		if(estaDisponibleElArchivo(arch_aux)){
 			if ((local_fd = open(local_path, O_CREAT | O_RDWR)) != -1) {
+				printf("Procesando... ");
 
-				rebuild_arch(arch_aux,local_fd);
+				if (rebuild_arch(arch_aux,local_fd)!=-1) printf("OK\n");
+
 
 				if (close(local_fd) == -1) perror("close");
 			} else {
@@ -1287,13 +1355,13 @@ void md5(char* arch_path){
 //---------------------------------------------------------------------------
 void blocks(char* arch_path){
 	struct t_arch* arch_aux;
-	struct t_bloque* block;
 	int i,j;
 	if(arch_path==NULL){
 		puts("blocks: falta un archivo como operando");
 	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
-		for(i=0;i<arch_aux->cant_bloq;i++){
-			block = list_get(arch_aux->bloques,i); //FIXME al borrar uno no baja la cantidad de blockes  (usar list_iterate)
+		i=0;
+		void _print_block(struct t_bloque* block){
+			block = list_get(arch_aux->bloques,i);
 			printf(" # Block: %d\n",block->nro_bloq);
 			j=0;
 			void _print_copies(struct t_copia_bloq* copy){
@@ -1301,31 +1369,34 @@ void blocks(char* arch_path){
 				j++;
 			}
 			list_iterate(block->list_copias, (void*) _print_copies);
+			i++;
 		}
+		list_iterate(arch_aux->bloques, (void*) _print_block);
 	} else {
 		printf("%s: el archivo no existe\n", arch_path);
 	}
 }
 
 //---------------------------------------------------------------------------
-void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
-	int num_block, num_copy;
+void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
+	int num_block;
 	struct t_arch* arch_aux;
-	struct t_bloque* bloque;
 	if(num_block_str==NULL){
 		puts("rmblock: falta un numero de bloque como operando");
-	} else if(num_copy_str==NULL){
-		puts("rmblock: falta un numero de copia como operando");
 	} else if(arch_path==NULL){
 		puts("rmblock: falta un archivo como operando");
 	} else {
 		num_block = strtol(num_block_str, NULL, 10);
-		num_copy = strtol(num_copy_str, NULL, 10);
 		if((arch_aux=get_arch_from_path(arch_path))!=NULL){
-			int _eq_num_block(struct t_bloque* block){
-				return block->nro_bloq==num_block;
+			if(any_block_with_num(num_block,arch_aux->bloques)){
+				int _eq_num(struct t_bloque* blk){
+					return blk->nro_bloq==num_block;
+				}
+				list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num, (void*) bloque_destroy);
+
+			} else {
+				puts("rmblock: no hay ningun bloque con ese numero");
 			}
-			list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num_block, (void*) bloque_destroy);
 		} else {
 			printf("%s: el archivo no existe\n",arch_aux->nombre);
 		}
@@ -1333,8 +1404,7 @@ void rmblock(char* num_block_str, char* num_copy_str, char* arch_path){//XXX pre
 }
 
 //---------------------------------------------------------------------------
-void cpblock(char* num_block_str, char* arch_path){
-	puts("Procesando...");
+void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
 	int num_block;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1350,8 +1420,9 @@ void cpblock(char* num_block_str, char* arch_path){
 			}
 			bloque = list_find(arch_aux->bloques, (void*) _eq_num_block);
 			if(bloque!=NULL){
+				printf("Procesando... ");
 				if(copy_block(bloque)!=-1){
-					puts("el bloque fue copiado con exito\n");
+					printf("OK\n");
 				}
 			} else {
 				printf("%d: no existe en el archivo un bloque con ese numero",num_block);
@@ -1403,6 +1474,11 @@ void lsnode() {
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
 		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
 		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
+		if (ptr_nodo->estado==CONECTADO){  // <-XXX: mostrar asi o los desconectados no mostrarlos???
+			printf("  *Estado: CONECTADO\n");
+		} else {
+			printf("  *Estado: DESCONECTADO\n");
+		}
 	}
 }
 
@@ -1420,7 +1496,7 @@ void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
 			nuevo_nodo = malloc(sizeof(struct t_nodo));
 				nuevo_nodo->id_nodo = infnod->id;
 				nuevo_nodo->estado = infnod->nodo_nuevo;
-				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;//FIXME es innecesario
+				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
 				nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
 				nuevo_nodo->ip_listen = infnod->ip_listen;
 				nuevo_nodo->port_listen = infnod->port_listen;

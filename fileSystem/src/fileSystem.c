@@ -14,6 +14,7 @@
 #include <commons/string.h>
 #include <commons/bitarray.h>
 #include <commons/config.h>
+#include <commons/log.h>
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
@@ -189,7 +190,11 @@ int arch_id_counter; //Se incrementa cada vez que s hace un upload
 struct t_dir* root;
 struct t_dir* dir_actual;
 
+t_log* logger;
+
 int main(void) {
+
+	logger = log_create("fs.log","FS",0,LOG_LEVEL_TRACE);
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	preparar_fs ();
@@ -207,8 +212,44 @@ int main(void) {
 	dir_destroy(root);
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	pthread_join(t_listener, NULL);
+	log_destroy(logger);
 
 	return EXIT_SUCCESS;
+}
+
+
+//---------------------------------------------------------------------------
+int receive_new_client_protocol(int socketCli) {
+
+	int prot = receive_protocol_in_order(socketCli);
+
+	switch(prot) {
+
+		case INFO_NODO:
+			log_info(logger,"Nueva solicitud de conexion de un nodo");
+			break;
+
+		case MARTA_CONNECTION_REQUEST:
+			log_info(logger,"MaRTA solicita conectarse al FileSystem");
+			break;
+
+		case DISCONNECTED:
+			log_error(logger,"Cliente se desconectó inesperadamente");
+			break;
+
+		case -1:
+			log_error(logger,"Error de Comunicación");
+			return -1;
+			break;
+
+		default:
+			log_error(logger,"Protocolo inesperado %i",prot);
+			return -1;
+			break;
+	}
+
+	return prot;
+
 }
 
 //---------------------------------------------------------------------------
@@ -220,6 +261,7 @@ void hilo_listener() {
 	FD_ZERO(&master); // Vacio los sets
 	FD_ZERO(&read_fds);
 	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
+	int fd_marta;
 	struct sockaddr_in sockaddr_listener, sockaddr_cli;
 	setSocketAddr(&sockaddr_listener);
 
@@ -252,8 +294,17 @@ void hilo_listener() {
 		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
 		for (i = 0; i <= fd_max; i++) {
 			if (FD_ISSET(i, &read_fds)) {
-				if (i == listener) {
-					socketfd_cli = accept(listener, (struct sockaddr*) &sockaddr_cli, (socklen_t*) &sin_size);
+
+				if(i==listener) {
+					if((socketfd_cli = aceptarCliente(listener,&sockaddr_cli)) <= 0) {
+						log_error(logger,"No se pudo aceptar un cliente");
+						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+						close(listener);
+						exit(-1);
+					}
+
+					receive_new_client_protocol(socketfd_cli);
+
 					if(recivir_instrucciones(socketfd_cli) <= 0) {
 						puts("Error al recibir el info Nodo");//FIXME
 						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
@@ -264,6 +315,15 @@ void hilo_listener() {
 					if (socketfd_cli > fd_max)
 						fd_max = socketfd_cli;
 				}
+						//
+//				if(i==listener) {
+////					close(fd_marta);
+//				}
+
+//					default:
+//						//XXX aca checkear si te llega un mensaje nulo de algun nodo para quitarlo de estado Conectado
+//						break;
+
 			}
 		}
 	}
@@ -518,7 +578,7 @@ int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index
 	*index_set = kbitarray_find_first_clean((*the_choosen_one)->bloquesLlenos);
 	kbitarray_set_bit((*the_choosen_one)->bloquesLlenos,*index_set);
 	return 0;
-} //FIXME elegir el que tenga más bloques disponibles
+}
 
 
 
@@ -537,7 +597,7 @@ int first_free_block(struct t_nodo* nodo){
 }
 
 //---------------------------------------------------------------------------
-int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {//TESTME
+int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {
 	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
 
@@ -550,7 +610,7 @@ int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, 
 }
 
 //---------------------------------------------------------------------------
-int recv_block(char** data, struct t_nodo* nodo, int index_set) {//TESTME
+int recv_block(char** data, struct t_nodo* nodo, int index_set) {
 	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
 
@@ -566,7 +626,7 @@ int recv_block(char** data, struct t_nodo* nodo, int index_set) {//TESTME
 int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 	struct t_nodo* nodo_disp;
 	int i, fin = 0, index_set;
-	int data_last_index = string_length(data)-1,
+	int data_last_index = string_length(data)-1, //XXX mmm no estoy tan seguro de lo que se hace acá, me parece mejor usar el stat
 		block_start = 0,
 		block_end;
 	t_list* list_used = list_create();

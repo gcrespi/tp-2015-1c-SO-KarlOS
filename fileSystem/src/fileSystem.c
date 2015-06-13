@@ -34,10 +34,10 @@
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
-#define RED "\e[1;91m"
-#define BOLD "\e[0;1m"
-#define BLUE "\e[1;94m"
-#define NORMAL "\e[0;0m"
+#define RED  "\033[1m\033[31m"
+#define BOLD "\033[1m\033[37m"
+#define BLUE "\033[1m\033[34m"
+#define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //20*1024*1024

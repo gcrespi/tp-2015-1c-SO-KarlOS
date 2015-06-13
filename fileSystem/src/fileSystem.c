@@ -48,6 +48,11 @@ enum t_estado_nodo {
 	DESCONECTADO,CONECTADO
 };
 
+//  Estados del nodo
+enum t_client_type {
+	MARTA,NODO, INVALID
+};
+
 //Estructura de carpetas del FS (Se persiste)
 struct t_dir {
 	struct t_dir* parent_dir;
@@ -74,7 +79,7 @@ struct t_nodo {
 	uint32_t port_listen;
 
 	//DESCONECTADO, CONECTADO, PENDIENTE (de aceptacion)
-	enum t_estado_nodo estado;
+	int estado;
 
 	//cantidad de bloques que se pueden almacenar en el nodo
 	int cantidad_bloques;
@@ -166,8 +171,7 @@ void rmnode(char*);
 //Prototipos
 void levantar_arch_conf();
 int recivir_info_nodo (int);
-int recivir_instrucciones(int);
-void setSocketAddr(struct sockaddr_in*);
+int recibir_instrucciones_nodo(int socket, fd_set* master);
 void hilo_listener();
 void preparar_fs (); //Configura lo inicial del fs o levanta la informacion persistida.
 void set_root();
@@ -186,12 +190,15 @@ struct info_nodo* find_infonodo_with_sockfd(int);
 struct t_nodo* find_nodo_with_sockfd(int);
 void* list_remove_elem(t_list*, void*);
 void list_destroy_elem(t_list*, void*, void*);
+int estaDisponibleElArchivo(struct t_arch* archivo);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
 char end; //Indicador de que deben terminar todos los hilos
 t_list* list_info_nodo; //Lista de nodos que solicitan conectarse al FS
 t_list* listaNodos; //Lista de nodos activos o desconectados
+pthread_mutex_t mutex_listaNodos;
+
 int arch_id_counter; //Se incrementa cada vez que s hace un upload
 struct t_dir* root;
 struct t_dir* dir_actual;
@@ -199,8 +206,11 @@ struct t_dir* dir_actual;
 t_log* logger;
 
 int main(void) {
+	listaNodos = list_create();
+	pthread_mutex_init(&mutex_listaNodos,NULL);
 
 	logger = log_create("fs.log","FS",0,LOG_LEVEL_TRACE);
+	list_info_nodo = list_create();
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
 	preparar_fs ();
@@ -218,46 +228,13 @@ int main(void) {
 	pthread_cancel(t_listener);
 	dir_destroy(root);
 
-	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	pthread_join(t_listener, NULL);
+	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	log_destroy(logger);
+	pthread_mutex_destroy(&mutex_listaNodos);
 
 	return EXIT_SUCCESS;
-}
-
-
-//---------------------------------------------------------------------------
-int receive_new_client_protocol(int socketCli) {
-
-	int prot = receive_protocol_in_order(socketCli);
-
-	switch(prot) {
-
-		case INFO_NODO:
-			log_info(logger,"Nueva solicitud de conexion de un nodo");
-			break;
-
-		case MARTA_CONNECTION_REQUEST:
-			log_info(logger,"MaRTA solicita conectarse al FileSystem");
-			break;
-
-		case DISCONNECTED:
-			log_error(logger,"Cliente se desconectó inesperadamente");
-			break;
-
-		case -1:
-			log_error(logger,"Error de Comunicación");
-			return -1;
-			break;
-
-		default:
-			log_error(logger,"Protocolo inesperado %i",prot);
-			return -1;
-			break;
-	}
-
-	return prot;
-
 }
 
 
@@ -274,6 +251,330 @@ char connectionIsBeingUsed(int socket) {
 	return 0;
 }
 
+//---------------------------------------------------------------------------
+int is_protocol_from(int prot) {
+	switch(prot) {
+		case INFO_NODO:
+			return NODO;
+			break;
+
+		case MARTA_CONNECTION_REQUEST:
+			return MARTA;
+			break;
+	}
+
+	return prot;
+}
+
+//---------------------------------------------------------------------------
+int isNodeActive(struct t_nodo* nodo) {
+	return nodo->estado == CONECTADO;
+}
+
+
+//---------------------------------------------------------------------------
+int tieneSuficientesNodos() {
+
+	int self;
+
+	pthread_mutex_lock(&mutex_listaNodos);
+	self =conf.min_cant_nodos <= list_count_satisfying(listaNodos,(void*) isNodeActive);
+	pthread_mutex_unlock(&mutex_listaNodos);
+
+	return self;
+}
+
+//---------------------------------------------------------------------------
+int receive_marta(int martaSock, uint32_t prot) {
+
+	switch(prot) {
+
+		case MARTA_CONNECTION_REQUEST:
+			if(tieneSuficientesNodos()) {
+				return send_protocol_in_order(martaSock,MARTA_CONNECTION_ACCEPTED);
+			} else {
+				return send_protocol_in_order(martaSock,MARTA_CONNECTION_REFUSED);
+			}
+			break;
+
+		default:
+			return -1;
+	}
+}
+
+//---------------------------------------------------------------------------
+int receive_new_client(int listener, int* martaSock) {
+
+	struct sockaddr_in sockaddr_cli;
+	int clientSock, result;
+
+	if((clientSock = aceptarCliente(listener,&sockaddr_cli)) <= 0) {
+		log_error(logger,"No se pudo aceptar un cliente");
+		return -1;
+	}
+
+	int prot_new_client = receive_protocol_in_order(clientSock);
+
+	switch(is_protocol_from(prot_new_client)) {
+
+		case NODO:
+			result = recivir_info_nodo(clientSock);
+			break;
+
+
+		case MARTA:
+			*martaSock = clientSock;
+			result = receive_marta(clientSock,prot_new_client);
+			break;
+
+		default:
+			result = -1;
+			break;
+	}
+
+	if(result > 0) {
+		return clientSock;
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int esSocketDeNodo(int self) {
+	return (find_infonodo_with_sockfd(self) != NULL) || (find_nodo_with_sockfd(self) != NULL);
+}
+
+//---------------------------------------------------------------------------
+int recibir_instrucciones_nodo(int socket, fd_set* master)
+{
+	struct info_nodo* infnodo;
+	struct t_nodo* nodo;
+
+	int prot = receive_protocol_in_order(socket);
+
+
+	switch (prot) {
+		case DISCONNECTED:
+			if( (infnodo = find_infonodo_with_sockfd(socket)) != NULL ){
+				log_info(logger,"Se ha Desconectado el nodo en espera ID: %i",infnodo->id);
+				list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
+			} else if (( nodo = find_nodo_with_sockfd(socket)) != NULL ) {
+				nodo->estado = DESCONECTADO;
+				FD_CLR(socket, master);
+				log_info(logger,"Se ha Desconectado el nodo aceptado ID: %i",nodo->id_nodo);
+			}
+			return 1;
+			break;
+
+		default:
+			log_error(logger,"Protocolo del NODO no esperado: %i",prot);
+			return -1;
+			break;
+	}
+
+
+}
+
+
+//---------------------------------------------------------------------------
+struct t_dir* resolve_relative_path(struct t_dir* source, char* path) {
+
+	int i;
+
+	for(i=0; (path[i]!='\0') && (path[i]!='/'); i++);
+
+	if(i==0) {
+		if(path[i]!='\0') {
+			return source;
+		} else {
+			return NULL;
+		}
+	}
+
+	if(path[i]!='/') {
+		char* aux = malloc((i+1)*sizeof(char));
+		strncpy(aux,path,i);
+		aux[i]='\0';
+
+		if(strcmp(aux,"..")==0) {
+			free(aux);
+			return resolve_relative_path(source->parent_dir, path+i+1);
+		}
+
+		int _dir_has_name(struct t_dir* dir) {
+			return strcmp(dir->nombre,aux)==0;
+		}
+
+		struct t_dir* next_dir;
+		next_dir = list_find(source->list_dirs,(void *)_dir_has_name);
+
+		free(aux);
+
+		if(next_dir !=NULL) {
+			return resolve_relative_path(next_dir, path+i+1);
+		}
+
+		return NULL;
+	} else {
+		return source;
+	}
+}
+
+//---------------------------------------------------------------------------
+struct t_dir* resolve_complete_path(char* path) {
+	if(path[0]!='/') {
+		return NULL;
+	}
+
+	int i;
+	for(i=1; (path[i]!='\0') && (i<1000); i++);
+
+	if(i>=1000) { //XXX Demasiado Largo
+		return NULL;
+	}
+
+	return resolve_relative_path(root,path+1);
+
+}
+
+//---------------------------------------------------------------------------
+struct t_arch* resolve_file_with_complete_path(char* path) {
+	struct t_dir* dir;
+	int i,last_separator = -1;
+
+	if((dir = resolve_complete_path(path)) !=NULL) {
+		for(i=0; path[i]!='\0'; i++) {
+			if(path[i]=='/') {
+				last_separator = i;
+			}
+		}
+
+		if(strlen(path)-1-last_separator > 0) {
+			char* aux = malloc((strlen(path)-last_separator)*sizeof(char));
+			strncpy(aux,path+last_separator+1,strlen(path)-last_separator-1);
+			aux[strlen(path)-1-last_separator]='\0';
+
+			int _file_has_name(struct t_arch* file) {
+				return strcmp(file->nombre,aux)==0;
+			}
+
+			struct t_arch* self = list_find(dir->list_archs,(void *)_file_has_name);
+
+			free(aux);
+
+			return self;
+		}
+	}
+
+	return NULL;
+}
+
+//---------------------------------------------------------------------------
+int receive_marta_instructions(int *martaSock, fd_set *master) {
+
+	int prot = receive_protocol_in_order(*martaSock);
+	int result = 0;
+	char *path_file;
+
+	uint32_t id_file,block_number;
+	int i;
+
+	switch (prot) {
+	case INFO_ARCHIVO_REQUEST:
+		result = receive_dinamic_array_in_order(*martaSock,(void**) &path_file);
+		if(result > 0) {
+			log_info(logger, "Solicitud de MaRTA de Información de Archivo %s",path_file);
+//			struct t_arch* file = resolve_file_with_complete_path(path_file);
+			free(path_file);
+
+//			if(file !=NULL) {
+//				if(estaDisponibleElArchivo(file)) {
+//					t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
+//
+//					buffer_add_int(info_file_buff,file->id_archivo);
+//					buffer_add_int(info_file_buff,file->cant_bloq);
+//					result = send_buffer_and_destroy(*martaSock,info_file_buff);
+//				} else {
+//					result = send_protocol_in_order(*martaSock,ARCHIVO_NO_DISPONIBLE);
+//				}
+//			} else {
+//				result = send_protocol_in_order(*martaSock,ARCHIVO_INEXISTENTE);
+//			}
+
+			//XXX MOCKEADO
+			t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
+
+			buffer_add_int(info_file_buff,12);
+			buffer_add_int(info_file_buff,20);
+			result = send_buffer_and_destroy(*martaSock,info_file_buff);
+
+		}
+
+		if(result < 0) {
+			log_error(logger, "No se pudo enviar a MaRTA Info de Archivo");
+			return -1;
+		}
+		if(result == 0) {
+			log_warning(logger, "MaRTA se Desconectó");
+			FD_CLR(*martaSock, master);
+			*martaSock = -1;
+			return 1;
+		}
+		break;
+
+	case BLOCK_LOCATION_REQUEST:
+
+		//XXX MOCKEADO
+		result = receive_int_in_order(*martaSock,&id_file);
+		result = (result > 0) ? receive_int_in_order(*martaSock,&block_number) : result;
+		log_info(logger, "Solicitud de MaRTA de Localización de Archivo: %i Bloque: %i",id_file, block_number);
+
+		t_buffer* block_location_buff = buffer_create_with_protocol(BLOCK_LOCATION);
+
+		buffer_add_int(block_location_buff,3);
+
+		for (i = 0; i < 3; i++) {
+			buffer_add_int(block_location_buff,i + 1);
+			buffer_add_int(block_location_buff,inet_addr("127.0.0.1"));
+			buffer_add_int(block_location_buff, 6666 + i);
+			buffer_add_int(block_location_buff, 10 - 2 * i);
+		}
+
+		result = (result > 0) ? send_buffer_and_destroy(*martaSock,block_location_buff) : result;
+		if(result < 0) {
+			log_error(logger, "No se pudo enviar a MaRTA Info de Bloque");
+			return -1;
+		}
+
+		if(result == 0) {
+			log_warning(logger, "MaRTA se Desconectó");
+			FD_CLR(*martaSock, master);
+			*martaSock = -1;
+			return 1;
+		}
+		break;
+
+	case DISCONNECTED:
+		log_warning(logger, "MaRTA se Desconectó");
+		FD_CLR(*martaSock, master);
+		*martaSock = -1;
+		return 1;
+		break;
+
+	case -1:
+		log_error(logger, "No se pudo recibir instrucciones de MaRTA");
+		return -1;
+		break;
+
+	default:
+		log_error(logger, "Protocolo Inesperado %i", prot);
+		return -1;
+		break;
+	}
+
+	return result;
+}
+
 
 //---------------------------------------------------------------------------
 void hilo_listener() {
@@ -283,39 +584,24 @@ void hilo_listener() {
 	FD_ZERO(&master); // Vacio los sets
 	FD_ZERO(&read_fds);
 	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
-	struct sockaddr_in sockaddr_listener, sockaddr_cli;
-	setSocketAddr(&sockaddr_listener);
-	int listener = socket(AF_INET, SOCK_STREAM, 0);
-	int socketfd_cli;
-	int yes = 1;
-	struct info_nodo* infnodo;
-	struct t_nodo* nodo;
+	int martaSock = -1;
+	int listener;
 
 	void cleanup() {
 		close(listener);
-		list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
 	}
 	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
 
-	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
-			== -1) {
-		perror("setsockopt");
-		exit(1);
-	}
-	if (bind(listener, (struct sockaddr*) &sockaddr_listener,
-			sizeof(sockaddr_listener)) == -1) {
-		perror("Error binding");
+
+	if((listener = escucharConexionesDesde("", conf.puerto_listen)) == -1) {
+		log_error(logger, "No se pudo obtener Puerto para Escuchar Clientes");
 		exit(-1);
-	}
-	if (listen(listener, 100) == -1) {
-		perror("Error listening");
-		exit(-1);
+	} else {
+//		log_debug(logger, "Puerto para Escuchar Clientes Obtenido");
 	}
 
 	FD_SET(listener, &master);
 	fd_max = listener;
-
-	list_info_nodo = list_create();
 
 	int i;
 	while(1){
@@ -325,30 +611,31 @@ void hilo_listener() {
 			if (FD_ISSET(i, &read_fds)) {
 
 				if(i==listener) {
-					if((socketfd_cli = aceptarCliente(listener,&sockaddr_cli)) <= 0) {
-						log_error(logger,"No se pudo aceptar un cliente");
-						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-						close(listener);
-						exit(-1);
-					}
+					int clientSock;
 
-					if(recivir_instrucciones(socketfd_cli) <= 0) {
-						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
+					if((clientSock = receive_new_client(listener,&martaSock))<=0) {
+						log_error(logger,"No se pudo aceptar un cliente");
 						close(listener);
 						exit(-1); //Fixme!!!
 					}
-					FD_SET(socketfd_cli, &master);
-					if (socketfd_cli > fd_max)
-						fd_max = socketfd_cli;
-				} else {
 
+					FD_SET(clientSock, &master);
+					if (clientSock > fd_max)
+						fd_max = clientSock;
+
+				} else if(martaSock == i) {
+					int result;
+					if((result = receive_marta_instructions(&martaSock, &master))<=0) {
+						close(listener);
+						exit(-1); //Fixme!!!
+					}
+
+				} else if(esSocketDeNodo(i)) {
 					if(!connectionIsBeingUsed(i)) {
-						if(recivir_instrucciones(i) == 0) {
-							if( (infnodo = find_infonodo_with_sockfd(i)) != NULL ){
-								list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
-							} else if (( nodo = find_nodo_with_sockfd(i)) != NULL ) {
-								nodo->estado = DESCONECTADO;
-							}
+						if(recibir_instrucciones_nodo(i, &master) <= 0) {
+							log_error(logger,"No se pudieron recibir instrucciones de nodo");
+							close(listener);
+							exit(-1); //Fixme!!!
 						}
 					}
 				}
@@ -360,107 +647,27 @@ void hilo_listener() {
 }
 
 ////---------------------------------------------------------------------------
-//void hilo_listener() {
+//int recivir_instrucciones_nodo(int socket){
+//	uint32_t prot;
+//	int result;
 //
-//	fd_set master; // Nuevo set principal
-//	fd_set read_fds; // Set temporal para lectura
-//	FD_ZERO(&master); // Vacio los sets
-//	FD_ZERO(&read_fds);
-//	int fd_max; // Va a ser el maximo de todos los descriptores de archivo del select
-//	struct sockaddr_in sockaddr_listener, sockaddr_cli;
-//	setSocketAddr(&sockaddr_listener);
-//	int listener = socket(AF_INET, SOCK_STREAM, 0);
-//	int socketfd_cli;
-//	int yes = 1;
-//	struct info_nodo* infnodo;
-//	struct t_nodo* nodo;
+//	prot = receive_protocol_in_order(socket);
 //
-//	void cleanup() {
-//		close(listener);
-//		list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//	}
-//	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
-//
-//	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int))
-//			== -1) {
-//		perror("setsockopt");
-//		exit(1);
-//	}
-//	if (bind(listener, (struct sockaddr*) &sockaddr_listener,
-//			sizeof(sockaddr_listener)) == -1) {
-//		perror("Error binding");
-//		exit(-1);
-//	}
-//	if (listen(listener, 100) == -1) {
-//		perror("Error listening");
-//		exit(-1);
+//	int _isNodeActive(struct t_nodo* nodo) {
+//		return nodo->estado == CONECTADO;
 //	}
 //
-//	FD_SET(listener, &master);
-//	fd_max = listener;
 //
-//	list_info_nodo = list_create();
-//
-//	int i;
-//	while(1){
-//		read_fds = master; // Cada iteracion vuelvo a copiar del principal al temporal
-//		select(fd_max + 1, &read_fds, NULL, NULL, NULL); // El select se encarga de poner en los temp los fds que recivieron algo
-//		for (i = 0; i <= fd_max; i++) {
-//			if (FD_ISSET(i, &read_fds)) {
-//
-//				if(i==listener) {
-//					if((socketfd_cli = aceptarCliente(listener,&sockaddr_cli)) <= 0) {
-//						log_error(logger,"No se pudo aceptar un cliente");
-//						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//						close(listener);
-//						exit(-1);
-//					}
-//
-////					receive_new_client_protocol(socketfd_cli);
-//
-//					if(recivir_instrucciones(socketfd_cli) <= 0) {
-//						list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
-//						close(listener);
-//						exit(-1); //Fixme!!!
-//					}
-//					FD_SET(socketfd_cli, &master);
-//					if (socketfd_cli > fd_max)
-//						fd_max = socketfd_cli;
-//				} else {
-//					if(recivir_instrucciones(i) == 0) {
-//						if( (infnodo = find_infonodo_with_sockfd(i)) != NULL ){
-//							list_destroy_elem(list_info_nodo,infnodo, (void*) info_nodo_destroy);
-//						} else if (( nodo = find_nodo_with_sockfd(i)) != NULL ) {
-//							nodo->estado = DESCONECTADO;
-//						}
-//					}
-//				}
-//			}
-//		}
+//	switch (prot) {
+//	case DISCONNECTED:
+//		return DISCONNECTED;
+//		break;
+
+//	default:
+//		return -1;
 //	}
-//
-//	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
+//	return result;
 //}
-
-//---------------------------------------------------------------------------
-int recivir_instrucciones(int socket){
-	uint32_t prot;
-	int result;
-
-	prot = receive_protocol_in_order(socket);
-
-	switch (prot) {
-	case DISCONNECTED:
-		return DISCONNECTED;
-		break;
-	case INFO_NODO:
-		result = recivir_info_nodo(socket);
-		break;
-	default:
-		return -1;
-	}
-	return result;
-}
 //---------------------------------------------------------------------------
 int recivir_info_nodo (int socket){
 	struct info_nodo* info_nodo;
@@ -484,7 +691,9 @@ int estaActivoNodo(int ID_nodo) {
 	int _esta_activo(struct t_nodo* nodo) {
 		return (ID_nodo == nodo->id_nodo) && (nodo->estado);
 	}
+	pthread_mutex_lock(&mutex_listaNodos);
 	return list_any_satisfy(listaNodos, (void*) _esta_activo);
+	pthread_mutex_unlock(&mutex_listaNodos);
 }
 
 //---------------------------------------------------------------------------
@@ -535,17 +744,7 @@ void levantar_arch_conf() {
 }
 
 //---------------------------------------------------------------------------
-void setSocketAddr(struct sockaddr_in* direccionDestino) {
-	direccionDestino->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
-	direccionDestino->sin_port = htons(conf.puerto_listen); // setea Puerto a conectarme
-	direccionDestino->sin_addr.s_addr = htonl(INADDR_ANY); // escucha todas las conexiones
-	memset(&(direccionDestino->sin_zero), '\0', 8); // pone en ceros los bits que sobran de la estructura
-}
-
-
-//---------------------------------------------------------------------------
 void preparar_fs () {
-	listaNodos = list_create();
 	set_root();
 	arch_id_counter = 0;
 }
@@ -599,7 +798,10 @@ struct t_nodo* find_nodo_with_ID(int id){
 	int _eq_ID(struct t_nodo* nodo){
 		return nodo->id_nodo==id;
 	}
-	return list_find(listaNodos, (void*) _eq_ID);
+	pthread_mutex_lock(&mutex_listaNodos);
+	struct t_nodo* self = list_find(listaNodos, (void*) _eq_ID);
+	pthread_mutex_unlock(&mutex_listaNodos);
+	return self;
 }
 
 //---------------------------------------------------------------------------
@@ -615,7 +817,11 @@ struct t_nodo* find_nodo_with_sockfd(int sockfd) {
 	int _eq_sock(struct t_nodo* nodo){
 		return nodo->socket_FS_nodo == sockfd;
 	}
-	return list_find(listaNodos, (void*) _eq_sock);
+
+	pthread_mutex_lock(&mutex_listaNodos);
+	struct t_nodo* self = list_find(listaNodos, (void*) _eq_sock);
+	pthread_mutex_unlock(&mutex_listaNodos);
+	return self;
 }
 
 //---------------------------------------------------------------------------
@@ -727,9 +933,12 @@ int has_disp_block(struct t_nodo* nodo){
 int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index_set){ //Devuelve el nodo que tenga espacio disponible y no este en la lista de usados
 	t_list* filtered_list;
 	int _disp_and_not_used(struct t_nodo* nodo){
-		return nodo->estado==CONECTADO && has_disp_block(nodo) && !contains(nodo, list_used);
+		return (nodo->estado==CONECTADO) && has_disp_block(nodo) && !contains(nodo, list_used);
 	}
+	pthread_mutex_lock(&mutex_listaNodos);
 	filtered_list = list_filter(listaNodos, (void*) _disp_and_not_used);
+	pthread_mutex_unlock(&mutex_listaNodos);
+
 	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
 		int amount_clean_n1 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
 		int amount_clean_n2 = kbitarray_amount_bits_clean(n2->bloquesLlenos);
@@ -885,7 +1094,9 @@ int copy_block(struct t_bloque* block){
 		if(success) { return 1; }
 		else { return 0; }
 	}
+	pthread_mutex_lock(&mutex_listaNodos);
 	list_used = list_filter(listaNodos, (void*) _nodo_used);
+	pthread_mutex_unlock(&mutex_listaNodos);
 	if(get_nodo_disp(list_used,&send_nodo,&index_set)==-1) {
 		list_destroy(list_used);
 		free(data);
@@ -1560,7 +1771,9 @@ void lsrequest() {
 
 //---------------------------------------------------------------------------
 void lsnode() {
+	pthread_mutex_lock(&mutex_listaNodos);
 	int lsize = list_size(listaNodos);
+	pthread_mutex_unlock(&mutex_listaNodos);
 	if (lsize == 0) {
 		puts("No hay nodos disponibles :/");
 	} else {
@@ -1571,7 +1784,9 @@ void lsnode() {
 	socklen_t peer_size = sizeof(struct sockaddr_in);
 	int i;
 	for (i = 0; i < lsize; i++) {
+		pthread_mutex_lock(&mutex_listaNodos);
 		ptr_nodo = list_get(listaNodos, i);
+		pthread_mutex_unlock(&mutex_listaNodos);
 		getpeername(ptr_nodo->socket_FS_nodo, (struct sockaddr*)&peer, &peer_size);
 		printf(" ID: %d\n", ptr_nodo->id_nodo);
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
@@ -1587,28 +1802,56 @@ void lsnode() {
 
 //---------------------------------------------------------------------------
 void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
-	int ID;
+	int node_id;
+	struct t_nodo* viejo_nodo;
+
 	int _eq_ID(struct info_nodo* ninf){
-		return ninf->id == ID;
+		return ninf->id == node_id;
 	}
+
 	if(IDstr!=NULL){
-		ID = strtol(IDstr, NULL, 10);
-		if(any_nodo_with_ID(ID, list_info_nodo)){
+		node_id = atoi(IDstr);
+		if(any_nodo_with_ID(node_id, list_info_nodo)){
 			struct info_nodo* infnod = list_remove_by_condition(list_info_nodo, (void*) _eq_ID);
-			struct t_nodo* nuevo_nodo;
-			nuevo_nodo = malloc(sizeof(struct t_nodo));
-				nuevo_nodo->id_nodo = infnod->id;
-				nuevo_nodo->estado = infnod->nodo_nuevo;
-				nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
-				nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
-				nuevo_nodo->usando_socket = 0;
-				nuevo_nodo->ip_listen = infnod->ip_listen;
-				nuevo_nodo->port_listen = infnod->port_listen;
-				nuevo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
-			info_nodo_destroy(infnod);
-			list_add(listaNodos, nuevo_nodo);
+
+			pthread_mutex_lock(&mutex_listaNodos);
+			viejo_nodo = list_find(listaNodos, (void*) _eq_ID);
+			pthread_mutex_unlock(&mutex_listaNodos);
+
+			if(viejo_nodo != NULL) {
+//				if(!(infnod->nodo_nuevo)) {
+					pthread_mutex_lock(&mutex_listaNodos);
+					viejo_nodo->estado = CONECTADO;
+					viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
+					viejo_nodo->ip_listen = infnod->ip_listen;
+					viejo_nodo->port_listen = infnod->port_listen;
+					viejo_nodo->usando_socket = 0;
+					if(infnod->nodo_nuevo) {
+						viejo_nodo->cantidad_bloques = infnod->cant_bloques;
+						kbitarray_destroy(viejo_nodo->bloquesLlenos);
+						viejo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
+						//XXX FALTA borrar en estructura de archivos las copias que se encontraban en este bloque
+					}
+					pthread_mutex_unlock(&mutex_listaNodos);
+			} else {
+				struct t_nodo* nuevo_nodo;
+				nuevo_nodo = malloc(sizeof(struct t_nodo));
+					nuevo_nodo->id_nodo = infnod->id;
+					nuevo_nodo->estado = CONECTADO;
+					nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
+					nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
+					nuevo_nodo->usando_socket = 0;
+					nuevo_nodo->ip_listen = infnod->ip_listen;
+					nuevo_nodo->port_listen = infnod->port_listen;
+					nuevo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
+				info_nodo_destroy(infnod);
+				pthread_mutex_lock(&mutex_listaNodos);
+				list_add(listaNodos, nuevo_nodo);
+				pthread_mutex_unlock(&mutex_listaNodos);
+			}
+
 		} else {
-			printf("%d: no hay ningun nodo con ese ID\n",ID);
+			printf("%d: no hay ningun nodo con ese ID\n",node_id);
 		}
 	} else {
 		puts("addnode: falta un ID como operando");
@@ -1623,8 +1866,14 @@ void rmnode(char* IDstr){
 	}
 	if(IDstr!=NULL){
 		ID = strtol(IDstr, NULL, 10);
-		if(any_nodo_with_ID(ID, listaNodos)){
+		pthread_mutex_lock(&mutex_listaNodos);
+		int result = any_nodo_with_ID(ID, listaNodos);
+		pthread_mutex_unlock(&mutex_listaNodos);
+
+		if(result){
+			pthread_mutex_lock(&mutex_listaNodos);
 			list_remove_and_destroy_by_condition(listaNodos, (void*) _eq_ID, (void*) nodo_destroy);
+			pthread_mutex_unlock(&mutex_listaNodos);
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",ID);
 		}

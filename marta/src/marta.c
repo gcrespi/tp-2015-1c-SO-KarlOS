@@ -410,10 +410,18 @@ int receive_info_file(int socket, t_info_file* info_file) {
 	switch (prot) {
 	case INFO_ARCHIVO:
 		log_debug(paranoid_log, "Recibiendo info del Archivo");
+		int result = receive_int_in_order(socket, &(info_file->id_file));
+		result = (result > 0) ? receive_int_in_order(socket, &(info_file->amount_blocks)) : result;
+		return result;
 		break;
 
 	case ARCHIVO_NO_DISPONIBLE:
 		log_error(paranoid_log, "El Archivo NO se encuentra Disponible");
+		return -2;
+		break;
+
+	case ARCHIVO_INEXISTENTE:
+		log_error(paranoid_log, "El Archivo NO existe en el MDFS");
 		return -2;
 		break;
 
@@ -429,13 +437,9 @@ int receive_info_file(int socket, t_info_file* info_file) {
 
 	default:
 		log_error(paranoid_log, "Protocolo Inesperado %i (MaRTA PANIC!)", prot);
+		return -1;
 		break;
 	}
-
-	int result = receive_int_in_order(socket, &(info_file->id_file));
-	result = (result > 0) ? receive_int_in_order(socket, &(info_file->amount_blocks)) : result;
-
-	return result;
 }
 
 //---------------------------------------------------------------------------

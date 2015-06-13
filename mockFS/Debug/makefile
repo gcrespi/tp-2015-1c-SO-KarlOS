@@ -29,7 +29,7 @@ all: mockFS
 mockFS: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc -L"/home/gustavo/git/tp-2015-1c-karlos/connectionlib/Debug" -o "mockFS" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc -L../../connectionlib/Debug -o "mockFS" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

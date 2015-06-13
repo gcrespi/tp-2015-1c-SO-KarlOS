@@ -56,7 +56,7 @@ int main(void) {
 	struct sockaddr_in socketaddr_cli;
 
 	log_debug(paranoid_log, "Obteniendo Puerto para Escuchar Jobs...");
-	if ((listener_jobs = escucharConexionesDesde("", 5556)) == -1) {
+	if ((listener_jobs = escucharConexionesDesde("", 5555)) == -1) {
 		log_error(paranoid_log, "No se pudo obtener Puerto para Escuchar Jobs");
 		exit(-1);
 	} else {

@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -lpthread -lkbitarray -lcommons -lconnectionlib
+LIBS := -lpthread -lcommons -lconnectionlib
 

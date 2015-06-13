@@ -110,9 +110,9 @@ int main(void) {
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-    socket_fs = solicitarConexionConFileSystem(conf);
+	mapearArchivo();
 
-    mapearArchivo();
+    socket_fs = solicitarConexionConFileSystem(conf);
 
 	if (enviar_info_nodo(socket_fs, &info_envio) <= 0) {
 		log_error(logger, "no se pudo enviar el info nodo");
@@ -238,9 +238,9 @@ int receive_new_client_job(int sockjob) {
 int esperar_instrucciones_del_filesystem(int *socket){
 
 	uint32_t tarea;
-	log_info(logger, "Esperando Instruccion FS");
 
     do{
+    	log_info(logger, "Esperando Instruccion FS");
 
     	tarea = receive_protocol_in_order(*socket);
 

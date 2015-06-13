@@ -34,10 +34,10 @@
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
 #define MAX_COMMAND_LENGTH 100
-#define RED "\e[1;91m"
-#define BOLD "\e[0;1m"
-#define BLUE "\e[1;94m"
-#define NORMAL "\e[0;0m"
+#define RED  "\033[1m\033[31m"
+#define BOLD "\033[1m\033[37m"
+#define BLUE "\033[1m\033[36m"
+#define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //20*1024*1024
@@ -646,28 +646,6 @@ void hilo_listener() {
 	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
 }
 
-////---------------------------------------------------------------------------
-//int recivir_instrucciones_nodo(int socket){
-//	uint32_t prot;
-//	int result;
-//
-//	prot = receive_protocol_in_order(socket);
-//
-//	int _isNodeActive(struct t_nodo* nodo) {
-//		return nodo->estado == CONECTADO;
-//	}
-//
-//
-//	switch (prot) {
-//	case DISCONNECTED:
-//		return DISCONNECTED;
-//		break;
-
-//	default:
-//		return -1;
-//	}
-//	return result;
-//}
 //---------------------------------------------------------------------------
 int recivir_info_nodo (int socket){
 	struct info_nodo* info_nodo;
@@ -1075,7 +1053,8 @@ int copy_block(struct t_bloque* block){
 	t_list* list_used;
 	struct t_nodo* recv_nodo,
 				 * send_nodo;
-	struct t_copia_bloq* copy_to_copy;
+	struct t_copia_bloq* copy_to_copy,
+					   * copied_copy;
 	int index_set;
 	char* data;
 
@@ -1108,6 +1087,10 @@ int copy_block(struct t_bloque* block){
 		free(data);
 		return -1;
 	}
+	copied_copy = malloc(sizeof(struct t_copia_bloq));
+		copied_copy->id_nodo = send_nodo->id_nodo;
+		copied_copy->bloq_nodo = index_set;
+	list_add(block->list_copias,copied_copy);
 	list_destroy(list_used);
 	free(data);
 	return 0;

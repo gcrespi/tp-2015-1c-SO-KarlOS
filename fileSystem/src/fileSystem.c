@@ -191,6 +191,8 @@ struct t_nodo* find_nodo_with_sockfd(int);
 void* list_remove_elem(t_list*, void*);
 void list_destroy_elem(t_list*, void*, void*);
 int estaDisponibleElArchivo(struct t_arch* archivo);
+struct t_arch* get_arch_from_path(char* path);
+
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
@@ -391,7 +393,7 @@ struct t_dir* resolve_relative_path(struct t_dir* source, char* path) {
 		}
 	}
 
-	if(path[i]!='/') {
+	if(path[i]=='/') {
 		char* aux = malloc((i+1)*sizeof(char));
 		strncpy(aux,path,i);
 		aux[i]='\0';
@@ -484,29 +486,29 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 		result = receive_dinamic_array_in_order(*martaSock,(void**) &path_file);
 		if(result > 0) {
 			log_info(logger, "Solicitud de MaRTA de Información de Archivo %s",path_file);
-//			struct t_arch* file = resolve_file_with_complete_path(path_file);
+			struct t_arch* file = get_arch_from_path(path_file);
 			free(path_file);
 
-//			if(file !=NULL) {
-//				if(estaDisponibleElArchivo(file)) {
-//					t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
+			if(file !=NULL) {
+				if(estaDisponibleElArchivo(file)) {
+					t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
+
+					buffer_add_int(info_file_buff,file->id_archivo);
+					buffer_add_int(info_file_buff,file->cant_bloq);
+					result = send_buffer_and_destroy(*martaSock,info_file_buff);
+				} else {
+					result = send_protocol_in_order(*martaSock,ARCHIVO_NO_DISPONIBLE);
+				}
+			} else {
+				result = send_protocol_in_order(*martaSock,ARCHIVO_INEXISTENTE);
+			}
+
+//			//XXX MOCKEADO
+//			t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
 //
-//					buffer_add_int(info_file_buff,file->id_archivo);
-//					buffer_add_int(info_file_buff,file->cant_bloq);
-//					result = send_buffer_and_destroy(*martaSock,info_file_buff);
-//				} else {
-//					result = send_protocol_in_order(*martaSock,ARCHIVO_NO_DISPONIBLE);
-//				}
-//			} else {
-//				result = send_protocol_in_order(*martaSock,ARCHIVO_INEXISTENTE);
-//			}
-
-			//XXX MOCKEADO
-			t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
-
-			buffer_add_int(info_file_buff,12);
-			buffer_add_int(info_file_buff,20);
-			result = send_buffer_and_destroy(*martaSock,info_file_buff);
+//			buffer_add_int(info_file_buff,12);
+//			buffer_add_int(info_file_buff,20);
+//			result = send_buffer_and_destroy(*martaSock,info_file_buff);
 
 		}
 
@@ -666,12 +668,16 @@ int recivir_info_nodo (int socket){
 
 //---------------------------------------------------------------------------
 int estaActivoNodo(int ID_nodo) {
+	int self;
+
 	int _esta_activo(struct t_nodo* nodo) {
 		return (ID_nodo == nodo->id_nodo) && (nodo->estado);
 	}
 	pthread_mutex_lock(&mutex_listaNodos);
-	return list_any_satisfy(listaNodos, (void*) _esta_activo);
+	self = list_any_satisfy(listaNodos, (void*) _esta_activo);
 	pthread_mutex_unlock(&mutex_listaNodos);
+
+	return self;
 }
 
 //---------------------------------------------------------------------------
@@ -714,7 +720,7 @@ void levantar_arch_conf() {
 		conf.puerto_listen = config_get_int_value(conf_arch,properties[0]);
 		conf.min_cant_nodos = config_get_int_value(conf_arch,properties[1]);
 	} else {
-//		log_error(paranoid_log, "Faltan propiedades en archivo de Configuración");//FIXME tirar cartel de error
+		log_error(logger, "Faltan propiedades en archivo de Configuración");
 		exit(-1);
 	}
 	config_destroy(conf_arch);
@@ -1231,7 +1237,7 @@ struct t_dir* get_dir_from_path(char* path){ //Si hay error devuelve NULL
 			if(dir!=root) dir = dir->parent_dir;
 		}  else if (any_dir_with_name(dir_name, dir->list_dirs)) {
 			dir = find_dir_with_name(dir_name, dir->list_dirs);
-		} else {
+		}else {
 			free(dir_name);
 			return NULL;
 		}
@@ -1245,10 +1251,23 @@ struct t_dir* get_dir_from_path(char* path){ //Si hay error devuelve NULL
 
 //---------------------------------------------------------------------------
 void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //Si har error: parent_dir = NULL
-	char** sub_dirs = string_split(path,"/");
+
+	char** sub_dirs;
+	if(path[0]=='/') {
+		*parent_dir = root;
+		if(strlen(path+1) == 0) {
+			*name = strdup("");
+			return;
+		}
+		sub_dirs = string_split(path+1,"/"); //XXX Luego hacer mejor solucion
+	} else {
+		*parent_dir = dir_actual;
+		sub_dirs = string_split(path,"/");
+	}
+
 	int last_index = string_split_size(sub_dirs)-1;
 	*name = string_duplicate(sub_dirs[last_index]);
-	*parent_dir = dir_actual;
+
 
 	t_list* list_dirs;
 	int i, error = 0;

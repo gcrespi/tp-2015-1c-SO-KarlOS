@@ -36,7 +36,7 @@
 #define MAX_COMMAND_LENGTH 100
 #define RED  "\033[1m\033[31m"
 #define BOLD "\033[1m\033[37m"
-#define BLUE "\033[1m\033[34m"
+#define BLUE "\033[1m\033[36m"
 #define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0

@@ -58,6 +58,8 @@ int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job);
 void esperar_instrucciones_de_MaRTA(int socket);
 void free_info_job(info_new_job* info);
 void set_new_job(conf_job conf, info_new_job* new_job);
+//void enviar_script_a_nodo()
+//int establecer_conexion_nodo(t_map_dest map_dest);
 
 t_log* paranoid_log;
 
@@ -225,7 +227,7 @@ void free_conf_job(conf_job* conf) {
 
 //---------------------------------------------------------------------------
 /*
-int establecer_conexion_nodo(t_map_dest map_dest){
+int solicitar_conexion_nodo(t_map_dest map_dest){
 
 	log_debug(paranoid_log, "Solicitando conexión con nodo...");
 		//int socketfd_Nodo = solicitarConexionCon((char*)map_dest.ip_nodo,(int) map_dest.puerto_nodo);
@@ -266,9 +268,7 @@ int establecer_conexion_nodo(t_map_dest map_dest){
 	return 1;
 }
 
-
-
-
+//--------------------------------------------------------------------------------------------------
 int recibir_info_map(int socket_job){
 
 	int result = 1;

@@ -88,13 +88,16 @@ int receive_new_client_job();
 void free_hilo_job();
 void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 //void terminar_hilos();
+void solicitarConexionConNodo(int *);
+int obtener_puerto_job(int);
+void obtener_hilos_jobs(int, t_hilo_job*, int, t_list*);
 
-//Main
+
+//Main####################################################################################################
 int main(void) {
-	int socket_fs,listener_job, hilos_de_job; // file descriptor del FS
+	int socket_fs,listener_job, hilos_de_job = 0; // file descriptor del FS
 	t_hilo_job* job;
 	t_list* lista_jobs;
-	int bandera = 1;
 
 	if((sem_init(&semaforo1, 0, 1))==-1){
 		perror("semaphore");
@@ -128,47 +131,11 @@ int main(void) {
 
 	lista_jobs = list_create();
 
-	log_debug(logger, "Obteniendo Puerto para Escuchar Jobs...");
-	if ((listener_job = escucharConexionesDesde("", conf.puerto_nodo)) == -1) {
-		log_error(logger, "No se pudo obtener Puerto para Escuchar Jobs");
-		exit(-1);
-	} else {
-		log_debug(logger, "Puerto para Escuchar Jobs Obtenido");
-	}
+	listener_job = obtener_puerto_job(listener_job);
 
-//!programa_terminado()
-	while (bandera) {
-			job = malloc(sizeof(t_hilo_job));
-			job->thr = malloc(sizeof(pthread_t));
-            printf("\n Esperando hilos de job... \n");
-			if ((job->sockfd = aceptarCliente(listener_job, &(job->socketaddr_cli))) == -1) {
-				log_error(logger, "Error al Aceptar Nuevos Jobs");
-				exit(-1);
-			}
-			   printf("\n hilos de job... \n");
-
-			if (receive_new_client_job(job->sockfd)) {
-				list_add(lista_jobs, job);
-
-				log_info(logger, "Creación de Hilo Job");
-				if (pthread_create(job->thr, NULL, (void *) esperar_instrucciones_job, &(job->sockfd)) != 0) {
-					log_error(logger, "No se pudo crear Hilo Job");
-					exit(-1);
-				}
-
-				hilos_de_job++;
-			} else {
-				free_hilo_job(job);
-			}
-
-			if (hilos_de_job >= 3) { //XXX
-				bandera = 0;
-			}
-		}
+	obtener_hilos_jobs(hilos_de_job, &job, listener_job, &lista_jobs);
 
 	//esperar_instrucciones_job();
-
-
 
 	list_iterate(lista_jobs, (void *) esperar_finalizacion_hilo_conex_job);
 	pthread_join(thread2, NULL);
@@ -177,6 +144,51 @@ int main(void) {
 	free (lista_jobs);
 	log_destroy(logger);
 	return EXIT_SUCCESS;
+}
+
+//#########################################################################################################
+//----------------------------------------------------------------------------------------------------
+int obtener_puerto_job(int listener_job){
+	log_debug(logger, "Obteniendo Puerto para Escuchar Jobs...");
+	if ((listener_job = escucharConexionesDesde("", conf.puerto_nodo)) == -1) {
+		log_error(logger, "No se pudo obtener Puerto para Escuchar Jobs");
+		exit(-1);
+	} else {
+		log_debug(logger, "Puerto para Escuchar Jobs Obtenido");
+	}
+	return listener_job;
+}
+
+//-----------------------------------------------------------------------------------------------------
+void obtener_hilos_jobs(int hilos_de_job, t_hilo_job* job, int listener_job, t_list* lista_jobs){
+  int bandera = 1;
+  	  while (bandera) {
+  		  job = malloc(sizeof(t_hilo_job));
+  		  job->thr = malloc(sizeof(pthread_t));
+  		  printf("Esperando hilos de job... \n");
+  		  if ((job->sockfd = aceptarCliente(listener_job, &(job->socketaddr_cli))) == -1) {
+  			  log_error(logger, "Error al Aceptar Nuevos Jobs");
+  			  exit(-1);
+		  }
+  		  printf("\n hilos de job... \n");
+
+		  if (receive_new_client_job(job->sockfd)) {
+			  list_add(lista_jobs, job);
+
+		      log_info(logger, "Creación de Hilo Job...");
+		      if (pthread_create(job->thr, NULL, (void *) esperar_instrucciones_job, &(job->sockfd)) != 0) {
+		    	  log_error(logger, "No se pudo crear Hilo Job");
+			      exit(-1);
+		      }
+
+		      hilos_de_job++;
+		  } else {
+			  free_hilo_job(job);
+		  }
+		  if (hilos_de_job >= 3) { //XXX
+			  bandera = 0;
+		  }
+  	  }
 }
 
 //---------------------------------------------------------------------------
@@ -195,8 +207,13 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 
 	return socketFS;
 }
+//----------------------------------------------------------------------------------------------------
+void solicitarConexionConNodo(int *socket_otro_nodo){
 
-//-------------------------------------------------------------------
+}
+
+
+//----------------------------------------------------------------------------------------------------
 void free_hilo_job(t_hilo_job* job) {
 	free(job->thr);
 	free(job);
@@ -283,18 +300,16 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 }
 //---------------------------------------------------------------------------
-//Si, es un poco de abuso de reutilización de código, obviamente cambia lo que te paresca.
+
 int esperar_instrucciones_job(int *socket_job){
-	//XXX Franco estuvo aqui! función en progreso...
 	uint32_t tarea;
 	log_info(logger, "Esperando Instruccion Job");
+
 	do{
 		tarea = receive_protocol_in_order(*socket_job);
-		//Puse algunas como para tener una idea, no se si quedaría otra tarea por recibir del JOB
-		//O si tendría la misma forma que la esperar_instruccion_del_filesystem.
 		switch (tarea) {
 		case ORDER_MAP:
-			if (recibir_Bloque(*socket_job) <=0) {
+			if (recibir_Bloque(*socket_job) <=0) {//Aca debe ir la función encargada de realizar el map
 				log_error(logger, "no se pudo realizar rutina de map");
 			}
 			else {
@@ -302,7 +317,7 @@ int esperar_instrucciones_job(int *socket_job){
 			}
 			break;
 		case ORDER_REDUCE:
-			if (enviar_bloque(*socket_job) <=0){
+			if (enviar_bloque(*socket_job) <=0){//Acá la función que realizaría el reduce
 				log_error(logger, "no se pudo realizar rutina reduce");
 			}
 			else {

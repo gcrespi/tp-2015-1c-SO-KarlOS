@@ -58,8 +58,9 @@ int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job);
 void esperar_instrucciones_de_MaRTA(int socket);
 void free_info_job(info_new_job* info);
 void set_new_job(conf_job conf, info_new_job* new_job);
+//int establecer_conexion_nodo(int socket_nodo);
 //void enviar_script_a_nodo()
-//int establecer_conexion_nodo(t_map_dest map_dest);
+int solicitar_conexion_nodo_mapper(t_map_dest map_dest);
 
 t_log* paranoid_log;
 
@@ -226,10 +227,24 @@ void free_conf_job(conf_job* conf) {
 }
 
 //---------------------------------------------------------------------------
-/*
-int solicitar_conexion_nodo(t_map_dest map_dest){
 
-	log_debug(paranoid_log, "Solicitando conexión con nodo...");
+int solicitar_conexion_nodo_mapper(t_map_dest map_dest){
+
+		log_debug(paranoid_log, "Solicitando conexión con nodo id: %i...", map_dest.id_nodo);
+		int socketNodo = solicitarConexionCon(map_dest.ip_nodo, map_dest.puerto_nodo);
+
+		if (socketNodo != -1) {
+			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+		} else {
+			log_error(paranoid_log, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+			exit(-1);
+		}
+		return socketNodo;
+}
+
+//------------------------------------------------------------------------------
+
+	/*log_debug(paranoid_log, "Solicitando conexión con nodo...");
 		//int socketfd_Nodo = solicitarConexionCon((char*)map_dest.ip_nodo,(int) map_dest.puerto_nodo);
 		int socketfd_Nodo = solicitarConexionCon("127.0.0.1",3500);
 
@@ -287,6 +302,8 @@ int recibir_info_map(int socket_job){
 //###########################################################################
 int main(void) {
 
+	int socket_nodo;
+	t_map_dest map_dest;
 	conf_job conf; // estructura que contiene la info del arch de conf
 	levantar_arch_conf_job(&conf);
 	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
@@ -298,7 +315,12 @@ int main(void) {
 
 	enviar_nuevo_job_a_MaRTA(socketfd_MaRTA, new_job);
 
-	esperar_instrucciones_de_MaRTA(socketfd_MaRTA);
+	/*map_dest =*/ esperar_instrucciones_de_MaRTA(socketfd_MaRTA);//XXX Acá hay algo mal, pero como aún no recibo
+	                                                          //la lista de nodos de Marta no
+	                                                          //tengo que mandarle al solicitar_conexion_nodo más que la
+	                                                          //estructura map_dest.
+	socket_nodo = solicitar_conexion_nodo_mapper(map_dest); //XXX Igual que acá, necesita conectarse a muchos nodos,
+	                                                 //tengo que revisar esta parte
 
 	free_conf_job(&conf);
 	free_info_job(&new_job);

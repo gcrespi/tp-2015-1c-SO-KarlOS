@@ -61,6 +61,7 @@ void set_new_job(conf_job conf, info_new_job* new_job);
 //int establecer_conexion_nodo(int socket_nodo);
 //void enviar_script_a_nodo()
 int solicitar_conexion_nodo_mapper(t_map_dest map_dest);
+int recibir_info_map(int);
 
 t_log* paranoid_log;
 
@@ -282,7 +283,7 @@ int solicitar_conexion_nodo_mapper(t_map_dest map_dest){
 
 	return 1;
 }
-
+*/
 //--------------------------------------------------------------------------------------------------
 int recibir_info_map(int socket_job){
 
@@ -297,7 +298,7 @@ int recibir_info_map(int socket_job){
 
 	return result;
 
-}*/
+}
 
 //###########################################################################
 int main(void) {

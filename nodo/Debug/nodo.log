@@ -743,3 +743,11 @@
 =======
 >>>>>>> 2063a4fa7d3f5719e3dae7abf19224e330ffbb5f
 >>>>>>> 3d1c7cad9d281f6a4f21f5f15275087206233774
+[INFO] 19:25:28:98 NODO/(8624:8624): inicio de mapeo
+[INFO] 19:25:28:103 NODO/(8624:8624): mapeo correcto
+[DEBUG] 19:25:28:106 NODO/(8624:8624): Solicitando conexión con MDFS...
+[INFO] 19:25:28:120 NODO/(8624:8624): Conexión con MDFS establecida IP: 127.0.0.1, Puerto: 5555
+[INFO] 19:25:28:125 NODO/(8624:8624): Se envio correctamente info nodo
+[DEBUG] 19:25:28:128 NODO/(8624:8624): Obteniendo Puerto para Escuchar Jobs...
+[DEBUG] 19:25:28:132 NODO/(8624:8624): Puerto para Escuchar Jobs Obtenido
+[INFO] 19:25:28:136 NODO/(8624:8625): Esperando Instruccion FS

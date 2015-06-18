@@ -37,6 +37,17 @@ struct info_nodo {
 	int cant_bloques;
 };
 
+//XXX Estructura que enviaría job a nodo al conectarse
+typedef struct {
+	uint32_t id_map;
+	uint32_t id_nodo;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
+	uint32_t block;
+	char* temp_file_name;
+} t_map_dest;
+
+
 // Una estructura que contiene todos los datos del arch de conf
 struct conf_nodo {
 	int id;
@@ -529,3 +540,6 @@ void esperar_finalizacion_hilo_conex_job(t_hilo_job* jop) {
 		printf("Error al hacer join del hilo\n");
 	}
 }
+
+//----------------------------------------------------------------------------
+

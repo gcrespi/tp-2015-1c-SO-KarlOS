@@ -35,7 +35,7 @@ fileSystem: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) fileSystem
+	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) fileSystem
 	-@echo ' '
 
 .PHONY: all clean dependents

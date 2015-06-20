@@ -188,9 +188,13 @@ void get_info_from_path(char*, char**, struct t_dir**);
 struct t_dir* get_dir_from_path(char*);
 struct info_nodo* find_infonodo_with_sockfd(int);
 struct t_nodo* find_nodo_with_sockfd(int);
+struct t_nodo* find_nodo_with_ID(int);
 void* list_remove_elem(t_list*, void*);
 void list_destroy_elem(t_list*, void*, void*);
 int estaDisponibleElArchivo(struct t_arch* archivo);
+int estaActivoNodo(int);
+struct t_bloque* find_block_with_num(int,t_list*);
+int any_block_with_num(int,t_list*);
 struct t_arch* get_arch_from_path(char* path);
 
 
@@ -470,6 +474,30 @@ struct t_arch* resolve_file_with_complete_path(char* path) {
 
 	return NULL;
 }
+//---------------------------------------------------------------------------
+void buffer_add_block_location(t_buffer *buffer, struct t_arch *file, int block_number){
+	struct t_bloque* block = find_block_with_num(block_number,file->bloques);
+
+	int is_available(struct t_copia_bloq* copy){
+		return estaActivoNodo(copy->id_nodo);
+	}
+	t_list *list_available_copies = list_filter(block->list_copias, (void*) is_available);
+
+	int ammount_copies = list_size(list_available_copies);
+	buffer_add_int(buffer,ammount_copies);
+
+	void charge_buffer(struct t_copia_bloq* copy){
+		struct t_nodo *nodo = find_nodo_with_ID(copy->id_nodo);
+
+		buffer_add_int(buffer, copy->id_nodo);
+		buffer_add_int(buffer, nodo->ip_listen);
+		buffer_add_int(buffer, nodo->port_listen);
+		buffer_add_int(buffer, copy->bloq_nodo);
+	}
+	list_iterate(list_available_copies, (void*) charge_buffer);
+	list_destroy(list_available_copies);
+
+}
 
 //---------------------------------------------------------------------------
 int receive_marta_instructions(int *martaSock, fd_set *master) {
@@ -478,8 +506,7 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 	int result = 0;
 	char *path_file;
 
-	uint32_t id_file,block_number;
-	int i;
+	uint32_t block_number;
 
 	switch (prot) {
 	case INFO_ARCHIVO_REQUEST:
@@ -492,8 +519,6 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 			if(file !=NULL) {
 				if(estaDisponibleElArchivo(file)) {
 					t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
-
-					buffer_add_int(info_file_buff,file->id_archivo);
 					buffer_add_int(info_file_buff,file->cant_bloq);
 					result = send_buffer_and_destroy(*martaSock,info_file_buff);
 				} else {
@@ -502,14 +527,6 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 			} else {
 				result = send_protocol_in_order(*martaSock,ARCHIVO_INEXISTENTE);
 			}
-
-//			//XXX MOCKEADO
-//			t_buffer* info_file_buff = buffer_create_with_protocol(INFO_ARCHIVO);
-//
-//			buffer_add_int(info_file_buff,12);
-//			buffer_add_int(info_file_buff,20);
-//			result = send_buffer_and_destroy(*martaSock,info_file_buff);
-
 		}
 
 		if(result < 0) {
@@ -526,23 +543,30 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 
 	case BLOCK_LOCATION_REQUEST:
 
-		//XXX MOCKEADO
-		result = receive_int_in_order(*martaSock,&id_file);
-		result = (result > 0) ? receive_int_in_order(*martaSock,&block_number) : result;
-		log_info(logger, "Solicitud de MaRTA de Localización de Archivo: %i Bloque: %i",id_file, block_number);
+		result = receive_dinamic_array_in_order(*martaSock,(void**) &path_file);
+		if(result > 0) {
+			result = receive_int_in_order(*martaSock,&block_number);
+			if(result > 0) {
+				log_info(logger, "Solicitud de MaRTA de Localización de Archivo: %s Bloque: %i",path_file, block_number);
+				struct t_arch* file = get_arch_from_path(path_file);
+				free(path_file);
 
-		t_buffer* block_location_buff = buffer_create_with_protocol(BLOCK_LOCATION);
+				if(file !=NULL) {
+					if(estaDisponibleElArchivo(file)&&any_block_with_num(block_number,file->bloques)) {
+						t_buffer* block_location_buff = buffer_create_with_protocol(BLOCK_LOCATION);
 
-		buffer_add_int(block_location_buff,3);
+						buffer_add_block_location(block_location_buff,file,block_number);
 
-		for (i = 0; i < 3; i++) {
-			buffer_add_int(block_location_buff,i + 1);
-			buffer_add_int(block_location_buff,inet_addr("127.0.0.1"));
-			buffer_add_int(block_location_buff, 6666 + i);
-			buffer_add_int(block_location_buff, 10 - 2 * i);
+						result = send_buffer_and_destroy(*martaSock,block_location_buff);
+					} else {
+						result = send_protocol_in_order(*martaSock,ARCHIVO_NO_DISPONIBLE);
+					}
+				} else {
+					result = send_protocol_in_order(*martaSock,ARCHIVO_INEXISTENTE);
+				}
+			}
 		}
 
-		result = (result > 0) ? send_buffer_and_destroy(*martaSock,block_location_buff) : result;
 		if(result < 0) {
 			log_error(logger, "No se pudo enviar a MaRTA Info de Bloque");
 			return -1;

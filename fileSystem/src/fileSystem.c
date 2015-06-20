@@ -378,102 +378,8 @@ int recibir_instrucciones_nodo(int socket, fd_set* master)
 			break;
 	}
 
-
 }
 
-
-//---------------------------------------------------------------------------
-struct t_dir* resolve_relative_path(struct t_dir* source, char* path) {
-
-	int i;
-
-	for(i=0; (path[i]!='\0') && (path[i]!='/'); i++);
-
-	if(i==0) {
-		if(path[i]!='\0') {
-			return source;
-		} else {
-			return NULL;
-		}
-	}
-
-	if(path[i]=='/') {
-		char* aux = malloc((i+1)*sizeof(char));
-		strncpy(aux,path,i);
-		aux[i]='\0';
-
-		if(strcmp(aux,"..")==0) {
-			free(aux);
-			return resolve_relative_path(source->parent_dir, path+i+1);
-		}
-
-		int _dir_has_name(struct t_dir* dir) {
-			return strcmp(dir->nombre,aux)==0;
-		}
-
-		struct t_dir* next_dir;
-		next_dir = list_find(source->list_dirs,(void *)_dir_has_name);
-
-		free(aux);
-
-		if(next_dir !=NULL) {
-			return resolve_relative_path(next_dir, path+i+1);
-		}
-
-		return NULL;
-	} else {
-		return source;
-	}
-}
-
-//---------------------------------------------------------------------------
-struct t_dir* resolve_complete_path(char* path) {
-	if(path[0]!='/') {
-		return NULL;
-	}
-
-	int i;
-	for(i=1; (path[i]!='\0') && (i<1000); i++);
-
-	if(i>=1000) { //XXX Demasiado Largo
-		return NULL;
-	}
-
-	return resolve_relative_path(root,path+1);
-
-}
-
-//---------------------------------------------------------------------------
-struct t_arch* resolve_file_with_complete_path(char* path) {
-	struct t_dir* dir;
-	int i,last_separator = -1;
-
-	if((dir = resolve_complete_path(path)) !=NULL) {
-		for(i=0; path[i]!='\0'; i++) {
-			if(path[i]=='/') {
-				last_separator = i;
-			}
-		}
-
-		if(strlen(path)-1-last_separator > 0) {
-			char* aux = malloc((strlen(path)-last_separator)*sizeof(char));
-			strncpy(aux,path+last_separator+1,strlen(path)-last_separator-1);
-			aux[strlen(path)-1-last_separator]='\0';
-
-			int _file_has_name(struct t_arch* file) {
-				return strcmp(file->nombre,aux)==0;
-			}
-
-			struct t_arch* self = list_find(dir->list_archs,(void *)_file_has_name);
-
-			free(aux);
-
-			return self;
-		}
-	}
-
-	return NULL;
-}
 //---------------------------------------------------------------------------
 void buffer_add_block_location(t_buffer *buffer, struct t_arch *file, int block_number){
 	struct t_bloque* block = find_block_with_num(block_number,file->bloques);
@@ -1259,7 +1165,9 @@ struct t_dir* get_dir_from_path(char* path){ //Si hay error devuelve NULL
 	if(dir!=NULL) {
 		if(string_equals_ignore_case(dir_name,"..")) {
 			if(dir!=root) dir = dir->parent_dir;
-		}  else if (any_dir_with_name(dir_name, dir->list_dirs)) {
+		} else if (string_equals_ignore_case(dir_name,"root")) {
+			dir = root;
+		} else if (any_dir_with_name(dir_name, dir->list_dirs)) {
 			dir = find_dir_with_name(dir_name, dir->list_dirs);
 		}else {
 			free(dir_name);
@@ -1280,10 +1188,10 @@ void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //S
 	if(path[0]=='/') {
 		*parent_dir = root;
 		if(strlen(path+1) == 0) {
-			*name = strdup("");
+			*name = strdup("root");
 			return;
 		}
-		sub_dirs = string_split(path+1,"/"); //XXX Luego hacer mejor solucion
+		sub_dirs = string_split(path+1,"/"); //XXX Luego hacer mejor solucion... se se se... deja de
 	} else {
 		*parent_dir = dir_actual;
 		sub_dirs = string_split(path,"/");

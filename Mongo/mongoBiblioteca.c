@@ -4,6 +4,7 @@
 #include <string.h>
 #include <commons/collections/list.h>
 #include <commons/string.h>
+#include "mongoBiblioteca.h"
 
 /*
  *
@@ -24,115 +25,11 @@
  * Bloque = {
  *     idArchivo: idArchivo,
  *     numero: numeroBloque,
- *     copia: [{numero: numeroCopia, nodo: numeroNodo, bloque: bloqueNodo}]
+ *     copias: [{numero: numeroCopia, nodo: numeroNodo, bloque: bloqueNodo}]
  * }
  *
  */
  
-mongoc_client_t *client;
-mongoc_collection_t *directorioCollection;
-mongoc_collection_t *archivoCollection;
-mongoc_collection_t *bloqueCollection;
-
-struct t_dir {
-    int id_directorio;
- struct t_dir* parent_dir;
-    char* nombre;
-    t_list* list_dirs;
-    t_list* list_archs;
-};
-struct t_arch {
-    //codigo unico del archivo fragmentado
-    int id_archivo;
-    //nombre del archivo dentro del MDFS
-    char *nombre;
-    //directorio padre del archivo dentro del MDFS
-    struct t_dir *parent_dir;
-    //cantidad de bloques en las cuales se fragmento el archivo
-    int cant_bloq;
-    //(lista de bloq_archivo) Lista de los bloques que componen al archivo
-    t_list* bloques;
-};
-struct t_copia_bloq {
- //numero de nodo en el que esta la copia
- int id_nodo;
- //bloque del nodo en donde esta la copia
- int bloq_nodo;
-};
-struct t_bloque {
- //numero de bloque del archivo fragmentado
- int nro_bloq;
- //cada una de las copias que tiene el bloque
- t_list* list_copias;
-};
- 
-void crearBloque(struct t_bloque *, int);
-void eliminarBloque(int , int );
-void crearDirectorio(struct t_dir*);
-void eliminarDirectorio(int );
-void crearArchivo(struct t_arch*);
-void eliminarArchivo(int idArchivo, int idDirectorioPadre);
-
-int main(){
-struct t_dir directorio;        //Directorio de prueba
-struct t_arch archivo;            //Archivo de prueba
-struct t_bloque bloquePrueba;    //Bloque de prueba
-struct t_copia_bloq copia;        //Copia bloque de prueba
-
-/*
-//Asgino valores para cada prueba
-
-directorio.id_directorio = 1;
-directorio.parent_dir = NULL;
-directorio.nombre = string_duplicate("Pepe");
-directorio.list_dirs = list_create();
-directorio.list_archs = list_create();
-
-
-archivo.id_archivo = 12345;
-archivo.parent_dir = &directorio;
-archivo.nombre = string_duplicate("Pelado");
-archivo.cant_bloq = 1;
-
-list_add(directorio.list_archs, &archivo);
-
-
-bloquePrueba.nro_bloq = 0;
-copia.id_nodo = 700;
-copia.bloq_nodo = 3;
-bloquePrueba.list_copias = list_create();
-list_add(bloquePrueba.list_copias, &copia);
-copia.id_nodo = 321;
-copia.bloq_nodo = 999;
-list_add(bloquePrueba.list_copias, &copia);
-*/
-
-mongoc_init ();
-client = mongoc_client_new ("mongodb://localhost:27017/");
-directorioCollection = mongoc_client_get_collection (client, "test", "Directorios");
-archivoCollection = mongoc_client_get_collection (client, "test", "Archivos");
-bloqueCollection = mongoc_client_get_collection (client, "test", "Bloques");
-
-
-//FUNCIONES PARA ARCHIVOS
-    //crearArchivo(&archivo);
-    //eliminarArchivo(12345, 1);
-
-//FUNCIONES PARA DIRECTORIOS
-    //crearDirectorio(&directorio);
-    //eliminarDirectorio(1);
-
-//FUNCIONES PARA BLOQUES
-    //eliminarBloque( 12345 ,120);
-    //crearBloque(&bloquePrueba, 12345);
-
-mongoc_collection_destroy (bloqueCollection);
-mongoc_collection_destroy (archivoCollection);
-mongoc_collection_destroy (directorioCollection);
-mongoc_client_destroy (client);
-return 0;  }
-
-
 void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     /*Recibo un bloque y el id del archivo, y lo escribo en mongo*/
     bson_t *array, *bloque, *query;
@@ -384,4 +281,213 @@ void eliminarArchivo(int idArchivo, int idDirectorioPadre){
   bson_destroy (query);
 }
 
+struct t_bloque * recibirBloqueDeMongo (int idArchivo, int nro_bloq){
+	struct t_bloque * bloque;
+	struct t_copia_bloq * copia;
+	bson_t * query;
+	const bson_t *doc;
+	mongoc_cursor_t *cursor;
+	bson_iter_t iter, array_iter, document_iter, nroCopia_iter, nodo_iter, bloque_iter;
+
+	//Busco el bloque
+	query = bson_new ();
+	BSON_APPEND_INT32 (query, "idArchivo", idArchivo);
+	BSON_APPEND_INT32 (query, "numero", nro_bloq);
+	if(!mongoc_collection_count (bloqueCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+		printf("Error: No existe el bloque\n");
+		bson_destroy (query);
+		return;
+	}
+	
+	//Armo el bloque
+	bloque = malloc(sizeof(struct t_bloque));
+	bloque -> nro_bloq = nro_bloq;
+	bloque -> list_copias = list_create();
+	
+	copia = malloc(sizeof(struct t_copia_bloq));
+	
+	//Armo las copias	
+	cursor = mongoc_collection_find(bloqueCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	mongoc_cursor_next (cursor, &doc);
+    if (bson_iter_init_find (&iter, doc, "copias") &&
+        BSON_ITER_HOLDS_ARRAY (&iter) &&
+        bson_iter_recurse (&iter, &array_iter)){
+			while (bson_iter_next (&array_iter)) {
+				if(BSON_ITER_HOLDS_DOCUMENT (&array_iter)&&
+				   bson_iter_recurse (&array_iter, &document_iter)&&
+				   bson_iter_find_descendant (&document_iter, "numeroCopia", &nroCopia_iter)&&
+				   bson_iter_find_descendant (&document_iter, "nodo", &nodo_iter)&&
+				   bson_iter_find_descendant (&document_iter, "bloque", &bloque_iter)){
+					copia -> id_nodo = (int) bson_iter_int32(&nodo_iter);
+					copia -> bloq_nodo = (int) bson_iter_int32(&bloque_iter);
+					list_add_in_index((bloque->list_copias), (int) bson_iter_int32(&nroCopia_iter), copia);
+				}
+			}
+    }
+  
+	mongoc_cursor_destroy (cursor);
+	bson_destroy (query);
+	return bloque;
+}
+
+struct t_arch * recibirArchivoDeMongo (int idArchivo, struct t_dir * directorioPadre){
+	struct t_arch * archivo;
+	bson_t * query;
+	const bson_t *doc;
+	mongoc_cursor_t *cursor;
+	bson_iter_t iter, nombre_iter, cantBloques_iter;
+	int i;
+	
+	//Busco el archivo
+	query = bson_new ();
+	BSON_APPEND_INT32 (query, "_id", idArchivo);
+	if(!mongoc_collection_count (archivoCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+		printf("Error: No existe el archivo\n");
+		bson_destroy (query);
+		return;
+	}
+	
+	//Armo el archivo
+	archivo = malloc(sizeof(struct t_arch));
+	archivo -> id_archivo = idArchivo;
+	archivo -> parent_dir = directorioPadre;
+	archivo -> bloques = list_create();
+	
+	cursor = mongoc_collection_find(archivoCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	mongoc_cursor_next (cursor, &doc);
+    if (bson_iter_init (&iter, doc) &&
+        bson_iter_find_descendant (&iter, "nombre", &nombre_iter)&&
+		bson_iter_find_descendant (&iter, "cant_bloq", &cantBloques_iter)){
+			archivo->nombre = (char*) bson_iter_utf8(&nombre_iter, NULL);
+			archivo->cant_bloq = bson_iter_int32(&cantBloques_iter);
+	}
+	
+	//Armo los bloques del archivo
+	for(i=0; i<(archivo->cant_bloq); i++){
+		list_add_in_index((archivo->bloques), i, recibirBloqueDeMongo(idArchivo, i));
+	}
+ 
+	mongoc_cursor_destroy (cursor);
+	bson_destroy (query);
+	return archivo;
+}
      
+struct t_dir * recibirDirectorioDeMongo (int idDirectorio, struct t_dir * directorioPadre){
+	struct t_dir * directorio;
+	bson_t * query;
+	const bson_t *doc;
+	mongoc_cursor_t *cursor;
+	bson_iter_t iter, nombre_iter, sub_iter;
+	int i;
+	
+	//Busco el directorio
+	query = bson_new ();
+	BSON_APPEND_INT32 (query, "_id", idDirectorio);
+	if(!mongoc_collection_count (directorioCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+		printf("Error: No existe el directorio\n");
+		bson_destroy (query);
+		return;
+	}
+	
+	//Armo el directorio
+	directorio = malloc(sizeof(struct t_dir));
+	directorio -> id_directorio = idDirectorio;
+	directorio -> parent_dir = directorioPadre;
+	directorio -> list_archs = list_create();
+	directorio -> list_dirs = list_create();
+	
+	cursor = mongoc_collection_find(directorioCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	mongoc_cursor_next (cursor, &doc);
+    if (bson_iter_init (&iter, doc) &&
+        bson_iter_find_descendant (&iter, "nombre", &nombre_iter)){
+			directorio->nombre = (char*) bson_iter_utf8(&nombre_iter, NULL);
+	}
+
+	//Armo la lista de archivos
+    if (bson_iter_init_find (&iter, doc, "archivos") &&
+        BSON_ITER_HOLDS_ARRAY (&iter) &&
+        bson_iter_recurse (&iter, &sub_iter)) {
+            while (bson_iter_next (&sub_iter)) {
+				list_add((directorio->list_archs), recibirArchivoDeMongo((int) bson_iter_int32(&sub_iter), directorio));
+			}
+	}
+	
+	//Armo la lista de directorios
+    if (bson_iter_init_find (&iter, doc, "directorios") &&
+        BSON_ITER_HOLDS_ARRAY (&iter) &&
+        bson_iter_recurse (&iter, &sub_iter)) {
+            while (bson_iter_next (&sub_iter)) {
+				list_add((directorio->list_dirs), recibirDirectorioDeMongo(bson_iter_int32(&sub_iter), directorio));
+			}		
+	}
+	
+	mongoc_cursor_destroy (cursor);
+	bson_destroy (query);
+	return directorio;	
+}
+
+void iniciarMongo(){
+	mongoc_init ();
+	client = mongoc_client_new ("mongodb://localhost:27017/");
+		
+	directorioCollection = mongoc_client_get_collection (client, "test", "Directorios");
+	archivoCollection = mongoc_client_get_collection (client, "test", "Archivos");
+	bloqueCollection = mongoc_client_get_collection (client, "test", "Bloques");
+}
+
+void cerrarMongo(){
+	mongoc_collection_destroy (bloqueCollection);
+	mongoc_collection_destroy (archivoCollection);
+	mongoc_collection_destroy (directorioCollection);
+	mongoc_client_destroy (client);
+}
+
+struct t_dir * levantarRaizDeMongo(){
+	struct t_dir * raiz;
+		
+	raiz = malloc(sizeof(struct t_dir));
+	
+	raiz = recibirDirectorioDeMongo(0, NULL);
+	
+	return raiz;	
+}
+
+int ultimoIdDirectorio(){
+	/*Retorna el último id_directorio guardado en mongo*/
+	int id = 0;
+	bson_t * query;
+	const bson_t * doc;
+	mongoc_cursor_t *cursor;
+	bson_iter_t iter, id_iter;
+
+	query = bson_new ();
+	cursor = mongoc_collection_find(directorioCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	while(mongoc_cursor_next (cursor, &doc)){
+		if (bson_iter_init (&iter, doc) &&
+			bson_iter_find_descendant (&iter, "_id", &id_iter)){
+				if( id<(bson_iter_int32(&id_iter)) ) id = bson_iter_int32(&id_iter);
+		}
+	}
+	
+	return id;
+}
+
+int ultimoIdArchivo(){
+	/*Retorna el último id_archivo guardado en mongo*/
+	int id = 0;
+	bson_t * query;
+	const bson_t * doc;
+	mongoc_cursor_t *cursor;
+	bson_iter_t iter, id_iter;
+
+	query = bson_new ();
+	cursor = mongoc_collection_find(archivoCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+	while(mongoc_cursor_next (cursor, &doc)){
+		if (bson_iter_init (&iter, doc) &&
+			bson_iter_find_descendant (&iter, "_id", &id_iter)){
+				if( id<(bson_iter_int32(&id_iter)) ) id = bson_iter_int32(&id_iter);
+		}
+	}
+	
+	return id;
+}

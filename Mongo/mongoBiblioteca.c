@@ -491,3 +491,8 @@ int ultimoIdArchivo(){
 	
 	return id;
 }
+
+void formatMongo(){
+	eliminarDirectorio(0);
+}
+

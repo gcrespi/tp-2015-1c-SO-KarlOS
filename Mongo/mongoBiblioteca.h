@@ -48,5 +48,6 @@ void cerrarMongo();
 struct t_dir * levantarRaizDeMongo();
 int ultimoIdDirectorio();
 int ultimoIdArchivo();
+void formatMongo();
 
 #endif /* MONGOLIB_H_ */

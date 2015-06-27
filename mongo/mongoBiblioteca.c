@@ -444,11 +444,23 @@ void cerrarMongo(){
 
 struct t_dir * levantarRaizDeMongo(){
 	struct t_dir * raiz;
+	bson_t * query;
 		
 	raiz = malloc(sizeof(struct t_dir));
 	
-	raiz = recibirDirectorioDeMongo(0, NULL);
+	query = bson_new ();
+	BSON_APPEND_INT32 (query, "_id", 0);
+	if(!mongoc_collection_count (directorioCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+		raiz->idDocumento = 0;
+		raiz -> id_directorio = idDirectorio;
+		raiz -> parent_dir = NULL;
+		raiz -> list_archs = list_create();
+		raiz -> list_dirs = list_create();
+	}
+	else
+		raiz = recibirDirectorioDeMongo(0, NULL);
 	
+	bson_destroy (query);	
 	return raiz;	
 }
 

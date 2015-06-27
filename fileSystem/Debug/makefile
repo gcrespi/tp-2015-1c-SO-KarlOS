@@ -29,7 +29,7 @@ all: fileSystem
 fileSystem: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C Linker'
-	gcc -L../../kbitarray/Debug -L../../connectionlib/Debug -o "fileSystem" $(OBJS) $(USER_OBJS) $(LIBS)
+	gcc -L../../kbitarray/Debug -L../../mongobiblioteca/Debug -L../../connectionlib/Debug $(pkg-config --libs libmongoc-1.0) -o "fileSystem" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

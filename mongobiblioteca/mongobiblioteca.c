@@ -107,7 +107,7 @@ void eliminarBloque(int idArchivo, int nroBloque){
   bson_destroy (query);
 }
 
-void crearDirectorio(struct t_dir* directorioNuevo){
+void crearDirectorioEn(struct t_dir* directorioNuevo,struct t_dir* directorioPadre){
   /*Recibo un directorio y lo inserto en la colección Directorios*/
 
   bson_t *doc;
@@ -128,11 +128,12 @@ void crearDirectorio(struct t_dir* directorioNuevo){
   array = bson_new();
   bson_append_array_begin (doc, "directorios", 11, array);
 
-  if(directorioNuevo->list_dirs){
-    for(i=0; i < list_size(directorioNuevo->list_dirs); i++){
-          directorioHijo = list_get(directorioNuevo->list_dirs, i);
-        BSON_APPEND_INT32 (array, "directorios", (directorioHijo->id_directorio));
-    }
+
+//  if(directorioNuevo->list_dirs){
+//    for(i=0; i < list_size(directorioNuevo->list_dirs); i++){
+//          directorioHijo = list_get(directorioNuevo->list_dirs, i);
+//        BSON_APPEND_INT32 (array, "directorios", (directorioHijo->id_directorio));
+//    }
   }
 
   bson_append_array_end (doc, array);

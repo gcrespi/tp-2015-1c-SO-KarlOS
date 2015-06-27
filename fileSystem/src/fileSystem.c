@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include "../../connectionlib/connectionlib.h"
 #include "../../kbitarray/kbitarray.h"
+#include "../../mongobiblioteca/mongobiblioteca.h"
 
 //Constantes de la consola
 #define MAX_COMMANOS_VALIDOS 30
@@ -51,14 +52,6 @@ enum t_estado_nodo {
 //  Estados del nodo
 enum t_client_type {
 	MARTA,NODO, INVALID
-};
-
-//Estructura de carpetas del FS (Se persiste)
-struct t_dir {
-	struct t_dir* parent_dir;
-	char* nombre;
-	t_list* list_dirs;
-	t_list* list_archs;
 };
 
 //no se persisten: estado, aceptado
@@ -88,6 +81,15 @@ struct t_nodo {
 	//bloqueOcupado = 1, bloqueVacio = 0
 	t_kbitarray* bloquesLlenos;
 
+};
+
+/*
+//Estructura de carpetas del FS (Se persiste)
+struct t_dir {
+	struct t_dir* parent_dir;
+	char* nombre;
+	t_list* list_dirs;
+	t_list* list_archs;
 };
 
 struct t_copia_bloq {
@@ -123,7 +125,7 @@ struct t_arch {
 	//(lista de bloq_archivo) Lista de los bloques que componen al archivo
 	t_list* bloques;
 };
-
+*/
 // La estructura que contiene todos los datos del arch de conf
 struct conf_fs {
 	int fs_vacio;
@@ -206,6 +208,7 @@ t_list* listaNodos; //Lista de nodos activos o desconectados
 pthread_mutex_t mutex_listaNodos;
 
 int arch_id_counter; //Se incrementa cada vez que s hace un upload
+int dir_id_counter;
 struct t_dir* root;
 struct t_dir* dir_actual;
 
@@ -239,7 +242,7 @@ int main(void) {
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
 	log_destroy(logger);
 	pthread_mutex_destroy(&mutex_listaNodos);
-
+	cerrarMongo();
 	return EXIT_SUCCESS;
 }
 
@@ -659,20 +662,16 @@ void levantar_arch_conf() {
 
 //---------------------------------------------------------------------------
 void preparar_fs () {
+	iniciarMongo();
 	set_root();
-	arch_id_counter = 0;
 }
 
 //---------------------------------------------------------------------------
 void set_root(){
-	struct t_dir* dir_root;
-	dir_root = malloc(sizeof(struct t_dir));
-		dir_root->nombre = string_duplicate("root");
-		dir_root->parent_dir = NULL;
-		dir_root->list_dirs = list_create();
-		dir_root->list_archs = list_create();
-	root = dir_root;
-	dir_actual = dir_root;
+	root = levantarRaizDeMongo();
+	dir_actual = root;
+	dir_id_counter = ultimoIdDirectorio()+1;
+	arch_id_counter = ultimoIdArchivo()+1;
  }
 							  //FINDERS
 //---------------------------------------------------------------------------
@@ -985,7 +984,7 @@ int rebuild_arch(struct t_arch* arch, int local_fd){
 }
 
 //---------------------------------------------------------------------------
-int copy_block(struct t_bloque* block){
+int copy_block(struct t_bloque* block, struct t_arch* arch){
 	t_list* list_used;
 	struct t_nodo* recv_nodo,
 				 * send_nodo;
@@ -1027,6 +1026,7 @@ int copy_block(struct t_bloque* block){
 		copied_copy->id_nodo = send_nodo->id_nodo;
 		copied_copy->bloq_nodo = index_set;
 	list_add(block->list_copias,copied_copy);
+//	copiarBloque(arch,block->num_bloq,copied_copy);
 	list_destroy(list_used);
 	free(data);
 	return 0;
@@ -1075,6 +1075,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
+	crearArchivo(new_arch);
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1083,10 +1084,13 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 	struct t_dir* new_dir;
 	new_dir = malloc(sizeof(struct t_dir));
+		new_dir->id_directorio = dir_id_counter;
 		new_dir->nombre = dir_name;
 		new_dir->parent_dir = parent_dir;
 		new_dir->list_dirs = list_create();
 		new_dir->list_archs = list_create();
+	crearDirectorioEn(new_dir);
+	dir_id_counter++;
 	return new_dir;
 }
 
@@ -1191,7 +1195,7 @@ void get_info_from_path(char* path, char** name, struct t_dir** parent_dir){ //S
 			*name = strdup("root");
 			return;
 		}
-		sub_dirs = string_split(path+1,"/"); //XXX Luego hacer mejor solucion... se se se... deja de
+		sub_dirs = string_split(path+1,"/"); //XXX Luego hacer mejor solucion... se se se... deja de flashar
 	} else {
 		*parent_dir = dir_actual;
 		sub_dirs = string_split(path,"/");
@@ -1368,6 +1372,7 @@ void rm(char* arch_path){
 			return string_equals_ignore_case(arch->nombre,arch_aux->nombre);
 		}
 		list_remove_by_condition(arch_aux->parent_dir->list_archs, (void*) _eq_name);
+		eliminarArchivo(arch_aux);
 		arch_destroy(arch_aux);
 	} else {
 		printf("%s: el archivo no existe\n", arch_path);
@@ -1386,6 +1391,7 @@ void mv(char* old_path, char* new_path) {
 		get_info_from_path(new_path, &arch_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_arch_name(arch_name, parent_dir_aux)) {
+		//		moverArchivo(arch_aux,parent_dir_aux,arch_name); TODO
 				arch_move(&arch_aux, parent_dir_aux);
 				aux_name = arch_aux->nombre;
 				arch_aux->nombre = arch_name;
@@ -1426,7 +1432,7 @@ void rname(char* arch_path, char* new_name) {
 }
 
 //---------------------------------------------------------------------------
-void makedir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
+void makedir(char* dir_path){
 	if (dir_path==NULL) {
 		puts("mkdir: falta un operando");
 	} else {
@@ -1458,9 +1464,11 @@ void remdir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 		}
 		if(dir_is_empty(dir_aux)) {
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
+			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
 		} else if(warning("El directorio no esta vacio, desea eliminarlo de todas formas?")) {
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
+			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
 		}
 	} else {
@@ -1480,6 +1488,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
+			//	moverDirectorio(dir_aux,parent_dir_aux,dir_name); TODO
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;
@@ -1637,6 +1646,7 @@ void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra 
 		num_block = strtol(num_block_str, NULL, 10);
 		if((arch_aux=get_arch_from_path(arch_path))!=NULL){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
+				eliminarBloque(arch_aux->id_archivo,num_block);
 				int _eq_num(struct t_bloque* blk){
 					return blk->nro_bloq==num_block;
 				}
@@ -1652,7 +1662,7 @@ void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra 
 }
 
 //---------------------------------------------------------------------------
-void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
+void cpblock(char* num_block_str, char* arch_path){
 	int num_block;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1669,7 +1679,7 @@ void cpblock(char* num_block_str, char* arch_path){ // <-FIXME
 			bloque = list_find(arch_aux->bloques, (void*) _eq_num_block);
 			if(bloque!=NULL){
 				printf("Procesando... ");
-				if(copy_block(bloque)!=-1){
+				if(copy_block(bloque,arch_aux)!=-1){
 					printf("OK\n");
 				}
 			} else {

@@ -100,14 +100,14 @@ void free_hilo_job();
 void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 //void terminar_hilos();
 void solicitarConexionConNodo(int *);
-int obtener_puerto_job(int);
-void obtener_hilos_jobs(int, t_hilo_job*, int, t_list*);
+int obtener_puerto_job();
+void obtener_hilos_jobs(int, t_list*);
 
 
 //Main####################################################################################################
 int main(void) {
-	int socket_fs,listener_job, hilos_de_job = 0; // file descriptor del FS
-	t_hilo_job* job;
+	int socket_fs,listener_job;
+
 	t_list* lista_jobs;
 
 	if((sem_init(&semaforo1, 0, 1))==-1){
@@ -142,11 +142,9 @@ int main(void) {
 
 	lista_jobs = list_create();
 
-	listener_job = obtener_puerto_job(listener_job);
+	listener_job = obtener_puerto_job();
 
-	obtener_hilos_jobs(hilos_de_job, &job, listener_job, &lista_jobs);
-
-	//esperar_instrucciones_job();
+	obtener_hilos_jobs(listener_job, lista_jobs);
 
 	list_iterate(lista_jobs, (void *) esperar_finalizacion_hilo_conex_job);
 	pthread_join(thread2, NULL);
@@ -159,7 +157,9 @@ int main(void) {
 
 //#########################################################################################################
 //----------------------------------------------------------------------------------------------------
-int obtener_puerto_job(int listener_job){
+int obtener_puerto_job(){
+	int listener_job;
+
 	log_debug(logger, "Obteniendo Puerto para Escuchar Jobs...");
 	if ((listener_job = escucharConexionesDesde("", conf.puerto_nodo)) == -1) {
 		log_error(logger, "No se pudo obtener Puerto para Escuchar Jobs");
@@ -171,8 +171,11 @@ int obtener_puerto_job(int listener_job){
 }
 
 //-----------------------------------------------------------------------------------------------------
-void obtener_hilos_jobs(int hilos_de_job, t_hilo_job* job, int listener_job, t_list* lista_jobs){
-  int bandera = 1;
+void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
+
+	t_hilo_job* job;
+	int hilos_de_job = 0;
+	int bandera = 1;
   	  while (bandera) {
   		  job = malloc(sizeof(t_hilo_job));
   		  job->thr = malloc(sizeof(pthread_t));

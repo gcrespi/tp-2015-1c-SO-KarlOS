@@ -115,10 +115,13 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			receive_int_in_order(socket, &(map_dest.block));
 			receive_dinamic_array_in_order(socket, (void **) &(map_dest.temp_file_name));
 
-			log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %i, Port: %i, Block: %i Temp: %s",
-					map_dest.id_map, map_dest.id_nodo, map_dest.ip_nodo, map_dest.puerto_nodo, map_dest.block,
+			char *ip = from_int_to_inet_addr(map_dest.ip_nodo);
+
+			log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %s, Port: %i, Block: %i Temp: %s",
+					map_dest.id_map, map_dest.id_nodo, ip, map_dest.puerto_nodo, map_dest.block,
 					map_dest.temp_file_name);
 
+			free(ip);
 			free(map_dest.temp_file_name);
 
 			count_map++;
@@ -232,14 +235,17 @@ void free_conf_job(conf_job* conf) {
 int solicitar_conexion_nodo_mapper(t_map_dest map_dest){
 
 		log_debug(paranoid_log, "Solicitando conexión con nodo id: %i...", map_dest.id_nodo);
-		int socketNodo = solicitarConexionCon(map_dest.ip_nodo, map_dest.puerto_nodo);
+		char *ip = from_int_to_inet_addr(map_dest.ip_nodo);
+		int socketNodo = solicitarConexionCon(ip, map_dest.puerto_nodo);
 
 		if (socketNodo != -1) {
-			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", ip, map_dest.puerto_nodo);
 		} else {
-			log_error(paranoid_log, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", map_dest.ip_nodo, map_dest.puerto_nodo);
+			log_error(paranoid_log, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", ip, map_dest.puerto_nodo);
+			free(ip);
 			exit(-1);
 		}
+		free(ip);
 		return socketNodo;
 }
 
@@ -320,7 +326,7 @@ int main(void) {
 	                                                          //la lista de nodos de Marta no
 	                                                          //tengo que mandarle al solicitar_conexion_nodo más que la
 	                                                          //estructura map_dest.
-	socket_nodo = solicitar_conexion_nodo_mapper(map_dest); //XXX Igual que acá, necesita conectarse a muchos nodos,
+	//socket_nodo = solicitar_conexion_nodo_mapper(map_dest); //XXX Igual que acá, necesita conectarse a muchos nodos,
 	                                                 //tengo que revisar esta parte
 
 	free_conf_job(&conf);

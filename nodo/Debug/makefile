@@ -35,7 +35,7 @@ nodo: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) nodo
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) nodo
 	-@echo ' '
 
 .PHONY: all clean dependents

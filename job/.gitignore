@@ -32,4 +32,5 @@
 *.dSYM/
 
 *.log
-/Debug/
+
+*language.settings.xml

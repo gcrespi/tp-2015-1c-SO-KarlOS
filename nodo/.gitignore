@@ -32,3 +32,6 @@
 *.dSYM/
 
 *.log
+
+
+*language.settings.xml

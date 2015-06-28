@@ -102,6 +102,9 @@ void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 void solicitarConexionConNodo(int *);
 int obtener_puerto_job();
 void obtener_hilos_jobs(int, t_list*);
+int realizar_Map(int);
+int iniciar_Tarea_Map(char *,char *,void (void*));
+void escribir_Sobre_Archivo(FILE *);
 
 
 //Main####################################################################################################
@@ -317,13 +320,14 @@ int esperar_instrucciones_del_filesystem(int *socket){
 
 int esperar_instrucciones_job(int *socket_job){
 	uint32_t tarea;
-	log_info(logger, "Esperando Instruccion Job");
+
 
 	do{
+		log_info(logger, "Esperando Instruccion Job");
 		tarea = receive_protocol_in_order(*socket_job);
 		switch (tarea) {
 		case EXECUTE_MAP:
-			if (recibir_Bloque(*socket_job) <=0) {//XXX Aca debe ir la función encargada de realizar el map
+			if (realizar_Map(*socket_job) <=0) {//XXX Aca debe ir la función encargada de realizar el map
 				log_error(logger, "no se pudo realizar rutina de map");
 			}
 			else {
@@ -545,4 +549,58 @@ void esperar_finalizacion_hilo_conex_job(t_hilo_job* jop) {
 }
 
 //----------------------------------------------------------------------------
+int realizar_Map(int socket) {
+	//signal(SIGPIPE, sigpipe_f);
+	int result = 1;
+    uint32_t nroBloque;
+    char* map;
+	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
+	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
 
+	puts("Realizando Tarea de maps\n");
+	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1","salida.txt",(void *) escribir_Sobre_Archivo);
+								//path de map a aplicar 	   donde guardar resultados
+
+	return result;
+}
+
+//----------------------------------------------------------------------------
+int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida,void (*escribirArchivoEntrada) (void*))
+{
+	FILE *entradaARedirigir = NULL;
+
+	char *comandoEntero= malloc(strlen(pathPrograma)+11+strlen(pathArchivoSalida));
+
+
+	sprintf(comandoEntero,"%s | sort > %s",pathPrograma,pathArchivoSalida);
+
+	entradaARedirigir = popen (comandoEntero,"w");
+
+	if (entradaARedirigir != NULL)
+	{
+		printf("empece\n");
+		escribirArchivoEntrada(entradaARedirigir);
+		printf("termine\n");
+		pclose (entradaARedirigir);
+
+		free(comandoEntero);
+	}
+	else
+	{
+		printf("No se pudo ejecutar el programa!");
+		return -1;
+	}
+	return 0;
+}
+//----------------------------------------------------------------------------
+void escribir_Sobre_Archivo(FILE *archivo)
+{
+
+		int salida;
+		salida= fprintf (archivo, &data[3]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
+
+		if(salida<0){
+			printf("Error in fprintf\n");
+			return;
+	      }
+}

@@ -198,7 +198,9 @@ int estaActivoNodo(int);
 struct t_bloque* find_block_with_num(int,t_list*);
 int any_block_with_num(int,t_list*);
 struct t_arch* get_arch_from_path(char* path);
-
+void levantar_nodos_de_dir(struct t_dir*);
+void foreach_dir_do(void(*closure)(struct t_dir*));
+void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
@@ -638,12 +640,6 @@ int estaDisponibleElArchivo(struct t_arch* archivo) {
 }
 
 //---------------------------------------------------------------------------
-//int esperarConexionesDeNodos(int cant_minima_nodos);
-
-//---------------------------------------------------------------------------
-//int atenderSolicitudesDeMarta();
-
-//---------------------------------------------------------------------------
 void levantar_arch_conf() {
 
 	char** properties = string_split("PUERTO_LISTEN,MIN_CANT_NODOS", ",");
@@ -664,6 +660,7 @@ void levantar_arch_conf() {
 void preparar_fs () {
 	iniciarMongo();
 	set_root();
+//	levantar_nodos_de_dir(root);
 }
 
 //---------------------------------------------------------------------------
@@ -673,6 +670,44 @@ void set_root(){
 	dir_id_counter = ultimoIdDirectorio()+1;
 	arch_id_counter = ultimoIdArchivo()+1;
  }
+
+//---------------------------------------------------------------------------
+void levantar_nodo(struct t_copia_bloq* copy){
+	struct t_nodo* nodo;
+	nodo = find_nodo_with_ID(copy->id_nodo);
+	kbitarray_set_bit(nodo->bloquesLlenos, copy->bloq_nodo);
+}
+
+//---------------------------------------------------------------------------
+void levantar_nodos_de_dir(struct t_dir* dir){
+	void _levantar_nodos_de_arch(struct t_arch* arch){
+		void _levantar_nodos_de_bloq(struct t_bloque* block){
+			void _levantar_nodo_de_copia(struct t_copia_bloq* copy){
+				levantar_nodo(copy);
+			}
+			list_iterate(block->list_copias, (void*) _levantar_nodo_de_copia);
+		}
+		list_iterate(arch->bloques, (void*) _levantar_nodos_de_bloq);
+	}
+	list_iterate(dir->list_archs, (void*) _levantar_nodos_de_arch);
+	foreach_dir_do((void*) levantar_nodos_de_dir);
+}
+
+
+//---------------------------------------------------------------------------
+void foreach_dir_do(void(*closure)(struct t_dir*)){
+	foreach_dir_do_starts_from((void*) closure, root);
+}
+
+//---------------------------------------------------------------------------
+void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir* dir){
+	closure(dir);
+	void _apply_closure(struct t_dir* subdir){
+		foreach_dir_do_starts_from((void*) closure, subdir);
+	}
+	list_iterate(dir->list_dirs, (void*) _apply_closure);
+}
+
 							  //FINDERS
 //---------------------------------------------------------------------------
 struct t_dir* find_dir_with_name(char* name, t_list* list){
@@ -1075,7 +1110,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-	crearArchivo(new_arch);
+//	crearArchivoEn(new_arch,new_arch->parent_dir);XXX
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1089,7 +1124,7 @@ struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 		new_dir->parent_dir = parent_dir;
 		new_dir->list_dirs = list_create();
 		new_dir->list_archs = list_create();
-//	crearDirectorioEn(new_dir);
+//	crearDirectorioEn(new_dir,new_dir->parent_dir);
 	dir_id_counter++;
 	return new_dir;
 }

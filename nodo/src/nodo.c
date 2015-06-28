@@ -597,7 +597,7 @@ void escribir_Sobre_Archivo(FILE *archivo)
 {
 
 		int salida;
-		salida= fprintf (archivo, &data[3]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
+		salida= fprintf (archivo,"%s",&data[2]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
 
 		if(salida<0){
 			printf("Error in fprintf\n");

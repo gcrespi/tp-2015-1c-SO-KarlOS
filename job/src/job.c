@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
 #include "../../connectionlib/connectionlib.h"
+#include <pthread.h>
 
 typedef struct {
 	char* ip_MaRTA;
@@ -43,6 +44,9 @@ typedef struct {
 	char* path_result_file;
 } info_new_job;
 
+
+
+
 typedef struct {
 	uint32_t id_map;
 	uint32_t id_nodo;
@@ -52,18 +56,64 @@ typedef struct {
 	char* temp_file_name;
 } t_map_dest;
 
-void levantar_arch_conf_job(conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
+typedef struct {
+	uint32_t id_map;
+	pthread_t* thr;
+} t_hilo_map;
+
+
+//########################################  Prototipos  #########################################
 void free_conf_job(conf_job* conf);
-int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job);
-void esperar_instrucciones_de_MaRTA(int socket);
 void free_info_job(info_new_job* info);
+
+void free_map_dest(t_map_dest* self);
+void free_hilo_map(t_hilo_map* self);
+
+void levantar_arch_conf_job(conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
+int enviar_nuevo_job_a_MaRTA(info_new_job info_job);
+void esperar_instrucciones_de_MaRTA();
 void set_new_job(conf_job conf, info_new_job* new_job);
 //int establecer_conexion_nodo(int socket_nodo);
 //void enviar_script_a_nodo()
-int solicitar_conexion_nodo_mapper(t_map_dest map_dest);
-int recibir_info_map(int);
+int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo);
+//int recibir_info_map(int socket_job);
 
+
+//######################################  Variables Globales  #######################################
 t_log* paranoid_log;
+
+pthread_mutex_t conex_marta_ready;
+int socket_marta;
+
+
+//######################################  Funciones  #######################################
+//---------------------------------------------------------------------------
+void free_info_job(info_new_job* info) {
+	free(info->path_result_file);
+	free(info->paths_to_apply_files);
+}
+
+//---------------------------------------------------------------------------
+void free_conf_job(conf_job* conf) {
+	free(conf->ip_MaRTA);
+	free(conf->path_map);
+	free(conf->path_reduce);
+	free(conf->paths_to_apply_files);
+	free(conf->path_result_file);
+}
+
+
+//-------------------------------------------------------------------------------------
+void free_map_dest(t_map_dest* self) {
+	free(self->temp_file_name);
+	free(self);
+}
+
+//-------------------------------------------------------------------------------------
+void free_hilo_map(t_hilo_map* self) {
+	free(self->thr);
+	free(self);
+}
 
 //-------------------------------------------------------------------------------------
 int solicitarConexionConMarta(conf_job conf) {
@@ -89,51 +139,88 @@ void set_new_job(conf_job conf, info_new_job* new_job) {
 }
 
 //---------------------------------------------------------------------------
-void esperar_instrucciones_de_MaRTA(int socket) {
+void esperar_hilo_map(t_hilo_map* hilo_map) {
+
+	void* ret_recep;
+
+	if (pthread_join(*(hilo_map->thr), &ret_recep) != 0) {
+		log_error(paranoid_log,"Error al hacer join del hilo Map ID: %i\n",hilo_map->id_map);
+	}
+}
+
+
+//---------------------------------------------------------------------------
+void hilo_map_job(t_map_dest* map_dest) {
+
+	t_buffer* result_map_buff;
+	char *ip_nodo = from_int_to_inet_addr(map_dest->ip_nodo);
+
+	log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %s, Port: %i, Block: %i Temp: %s",
+			map_dest->id_map, map_dest->id_nodo, ip_nodo, map_dest->puerto_nodo, map_dest->block,
+			map_dest->temp_file_name);
+
+	int socket_nodo = solicitarConexionConNodo(ip_nodo, map_dest->puerto_nodo, map_dest->id_nodo);
+
+	if(socket_nodo != -1) {
+		//XXX Realización del Map aquí
+	}
+
+	pthread_mutex_lock(&conex_marta_ready);
+
+	if(socket_nodo != -1) {
+		result_map_buff = buffer_create_with_protocol(MAP_OK);
+		buffer_add_int(result_map_buff,map_dest->id_map);
+		send_buffer_and_destroy(socket_marta,result_map_buff);
+	} else {
+		result_map_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
+		buffer_add_int(result_map_buff,map_dest->id_map);
+		send_buffer_and_destroy(socket_marta,result_map_buff);
+	}
+
+	pthread_mutex_unlock(&conex_marta_ready);
+
+	free(ip_nodo);
+	free_map_dest(map_dest);
+}
+
+//---------------------------------------------------------------------------
+void esperar_instrucciones_de_MaRTA() {
 
 	uint32_t prot;
 	int finished = 0, error = 0;
-	t_map_dest map_dest;
-	t_buffer* result_map_buff;
-	int count_map=0; //XXX
+	t_hilo_map* hilo_map;
+	t_map_dest* map_dest;
+	t_list* hilos_map = list_create();
 
 	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
 	while ((!finished) && (!error)) {
 
-		prot = receive_protocol_in_order(socket);
+		prot = receive_protocol_in_order(socket_marta);
 
 		switch (prot) {
 
 		case ORDER_MAP:
-			//TODO abrir hilo de map
+			map_dest = malloc(sizeof(t_map_dest));
 
-			receive_int_in_order(socket, &(map_dest.id_map));
-			receive_int_in_order(socket, &(map_dest.id_nodo));
-			receive_int_in_order(socket, &(map_dest.ip_nodo));
-			receive_int_in_order(socket, &(map_dest.puerto_nodo));
-			receive_int_in_order(socket, &(map_dest.block));
-			receive_dinamic_array_in_order(socket, (void **) &(map_dest.temp_file_name));
+			receive_int_in_order(socket_marta, &(map_dest->id_map));
+			receive_int_in_order(socket_marta, &(map_dest->id_nodo));
+			receive_int_in_order(socket_marta, &(map_dest->ip_nodo));
+			receive_int_in_order(socket_marta, &(map_dest->puerto_nodo));
+			receive_int_in_order(socket_marta, &(map_dest->block));
+			receive_dinamic_array_in_order(socket_marta, (void **) &(map_dest->temp_file_name));
 
-			char *ip = from_int_to_inet_addr(map_dest.ip_nodo);
 
-			log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %s, Port: %i, Block: %i Temp: %s",
-					map_dest.id_map, map_dest.id_nodo, ip, map_dest.puerto_nodo, map_dest.block,
-					map_dest.temp_file_name);
+			hilo_map = malloc(sizeof(t_hilo_map));
+			hilo_map->thr = malloc(sizeof(pthread_t));
+			hilo_map->id_map = map_dest->id_map;
 
-			free(ip);
-			free(map_dest.temp_file_name);
+			list_add(hilos_map,hilo_map);
 
-			count_map++;
-
-			if(count_map % 10 == 0) {
-				result_map_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
-				buffer_add_int(result_map_buff,map_dest.id_map);
-				send_buffer_and_destroy(socket,result_map_buff);
-			} else {
-				result_map_buff = buffer_create_with_protocol(MAP_OK);
-				buffer_add_int(result_map_buff,map_dest.id_map);
-				send_buffer_and_destroy(socket,result_map_buff);
+			log_info(paranoid_log, "Creación de Hilo Job");
+			if (pthread_create(hilo_map->thr, NULL, (void *) hilo_map_job, map_dest) != 0) {
+				log_error(paranoid_log, "No se pudo crear Hilo de Map ID: %i",hilo_map->id_map);
+				exit(-1);
 			}
 			break;
 
@@ -167,10 +254,13 @@ void esperar_instrucciones_de_MaRTA(int socket) {
 			break;
 		}
 	}
+
+	list_iterate(hilos_map, (void *) esperar_hilo_map);
+	list_destroy_and_destroy_elements(hilos_map, (void *) free_hilo_map);
 }
 
 //---------------------------------------------------------------------------
-int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job) {
+int enviar_nuevo_job_a_MaRTA(info_new_job info_job) {
 
 	int result = 0;
 	t_buffer* new_job_buff;
@@ -183,7 +273,7 @@ int enviar_nuevo_job_a_MaRTA(int socket, info_new_job info_job) {
 	buffer_add_string(new_job_buff, info_job.paths_to_apply_files);
 	buffer_add_string(new_job_buff, info_job.path_result_file);
 
-	result = send_buffer_and_destroy(socket, new_job_buff);
+	result = send_buffer_and_destroy(socket_marta, new_job_buff);
 
 	if (result == -1) {
 		log_error(paranoid_log, "No se pudo enviar Target del Job");
@@ -216,36 +306,18 @@ void levantar_arch_conf_job(conf_job* conf) {
 }
 
 //---------------------------------------------------------------------------
-void free_info_job(info_new_job* info) {
-	free(info->path_result_file);
-	free(info->paths_to_apply_files);
-}
 
-//---------------------------------------------------------------------------
-void free_conf_job(conf_job* conf) {
-	free(conf->ip_MaRTA);
-	free(conf->path_map);
-	free(conf->path_reduce);
-	free(conf->paths_to_apply_files);
-	free(conf->path_result_file);
-}
+int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo) {
 
-//---------------------------------------------------------------------------
-
-int solicitar_conexion_nodo_mapper(t_map_dest map_dest){
-
-		log_debug(paranoid_log, "Solicitando conexión con nodo id: %i...", map_dest.id_nodo);
-		char *ip = from_int_to_inet_addr(map_dest.ip_nodo);
-		int socketNodo = solicitarConexionCon(ip, map_dest.puerto_nodo);
+		log_debug(paranoid_log, "Solicitando conexión con nodo ID: %i...", id_nodo);
+		int socketNodo = solicitarConexionCon(ip_nodo, puerto_nodo);
 
 		if (socketNodo != -1) {
-			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", ip, map_dest.puerto_nodo);
+			log_info(paranoid_log, "Conexión con nodo establecida IP: %s, Puerto: %i", ip_nodo, puerto_nodo);
 		} else {
-			log_error(paranoid_log, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", ip, map_dest.puerto_nodo);
-			free(ip);
-			exit(-1);
+			log_error(paranoid_log, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", ip_nodo, puerto_nodo);
 		}
-		free(ip);
+
 		return socketNodo;
 }
 
@@ -290,49 +362,44 @@ int solicitar_conexion_nodo_mapper(t_map_dest map_dest){
 	return 1;
 }
 */
-//--------------------------------------------------------------------------------------------------
-int recibir_info_map(int socket_job){
 
-	int result = 1;
-	uint32_t nroBloque;
-	uint32_t id_nodo;
-	char* temp_file_name;
+//---------------------------------------------------------------------------
+void init_var_globales() {
 
-	result = (result > 0) ? receive_int_in_order(socket_job, &nroBloque) : result;
-	result = (result > 0) ? receive_int_in_order(socket_job, &id_nodo) : result;
-	result = (result > 0) ? receive_static_array_in_order(socket_job, &temp_file_name) : result;
+	pthread_mutex_init(&conex_marta_ready, NULL);
 
-	return result;
-
+	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 }
+
+//--------------------------------------------------------------------------
+void end_var_globales() {
+
+	pthread_mutex_destroy(&conex_marta_ready);
+
+	log_destroy(paranoid_log);
+}
+
 
 //###########################################################################
 int main(void) {
 
-	int socket_nodo;
-	t_map_dest map_dest;
+	init_var_globales();
+
 	conf_job conf; // estructura que contiene la info del arch de conf
 	levantar_arch_conf_job(&conf);
-	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 
-	int socketfd_MaRTA = solicitarConexionConMarta(conf);
+	socket_marta = solicitarConexionConMarta(conf);
 
 	info_new_job new_job;
 	set_new_job(conf, &new_job);
 
-	enviar_nuevo_job_a_MaRTA(socketfd_MaRTA, new_job);
+	enviar_nuevo_job_a_MaRTA(new_job);
 
-	/*map_dest =*/ esperar_instrucciones_de_MaRTA(socketfd_MaRTA);//XXX Acá hay algo mal, pero como aún no recibo
-	                                                          //la lista de nodos de Marta no
-	                                                          //tengo que mandarle al solicitar_conexion_nodo más que la
-	                                                          //estructura map_dest.
-	//socket_nodo = solicitar_conexion_nodo_mapper(map_dest); //XXX Igual que acá, necesita conectarse a muchos nodos,
-	                                                 //tengo que revisar esta parte
+	esperar_instrucciones_de_MaRTA();
 
 	free_conf_job(&conf);
 	free_info_job(&new_job);
 
-	log_destroy(paranoid_log);
-
+	end_var_globales();
 	return EXIT_SUCCESS;
 }

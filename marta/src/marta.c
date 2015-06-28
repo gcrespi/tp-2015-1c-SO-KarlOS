@@ -639,7 +639,7 @@ t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_
 		return NULL;
 	}
 
-//	selected_copy = list_get(block_copies, 0); //TODO TESTME Planificador
+	//TODO TESTME Planificador
 
 	int _score_block_copy(t_block_copy* block_copy) {
 		return score_block_copy(block_copy, info_job.combiner, temp_list);

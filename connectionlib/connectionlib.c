@@ -313,7 +313,7 @@ void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port) {
 	address->sin_family = AF_INET; // familia de direcciones (siempre AF_INET)
 	address->sin_port = htons(port); // setea Puerto a conectarme
 
-	if (strlen(ip) != 0) {
+	if ((strlen(ip) != 0) && (strcmp(ip,"ANY IP")!=0)) {
 		address->sin_addr.s_addr = inet_addr(ip); // Setea Ip a conectarme
 	} else {
 		address->sin_addr.s_addr = htonl(INADDR_ANY); // escucha todas las conexiones

@@ -322,16 +322,16 @@ int esperar_instrucciones_job(int *socket_job){
 	do{
 		tarea = receive_protocol_in_order(*socket_job);
 		switch (tarea) {
-		case ORDER_MAP:
-			if (recibir_Bloque(*socket_job) <=0) {//Aca debe ir la función encargada de realizar el map
+		case EXECUTE_MAP:
+			if (recibir_Bloque(*socket_job) <=0) {//XXX Aca debe ir la función encargada de realizar el map
 				log_error(logger, "no se pudo realizar rutina de map");
 			}
 			else {
 				log_info(logger, "Se realizó correctamente la rutina map");
 			}
 			break;
-		case ORDER_REDUCE:
-			if (enviar_bloque(*socket_job) <=0){//Acá la función que realizaría el reduce
+		case EXECUTE_REDUCE:
+			if (enviar_bloque(*socket_job) <=0){//XXX Acá la función que realizaría el reduce
 				log_error(logger, "no se pudo realizar rutina reduce");
 			}
 			else {

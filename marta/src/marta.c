@@ -218,8 +218,12 @@ void mostrar_info_file(t_info_file* self) {
 //---------------------------------------------------------------------------
 void mostrar_map_dest(t_map_dest* md) {
 
-	log_debug(paranoid_log, "Map ID: %i, Nodo: ID: %i, IP: %i, Port: %i, Block: %i Temp:%s", md->id_map, md->id_nodo, md->ip_nodo,
+	char *ip = from_int_to_inet_addr(md->ip_nodo);
+
+	log_debug(paranoid_log, "Map ID: %i, Nodo: ID: %i, IP: %s, Port: %i, Block: %i Temp:%s", md->id_map, md->id_nodo, ip,
 			md->puerto_nodo, md->block, md->temp_file_name);
+
+	free(ip);
 }
 
 //---------------------------------------------------------------------------
@@ -574,7 +578,7 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list) {
 		if (result > 0) {
 			list_add(file_list, info_file);
 		} else {
-			free(info_file);
+			free_info_file(info_file);
 		}
 	}
 

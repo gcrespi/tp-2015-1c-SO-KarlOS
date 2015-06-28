@@ -334,6 +334,21 @@ void getFromSocketAddrStd(struct sockaddr_in address, char** ip, int* port) {
 	}
 }
 
+//---------------------------------------------------------------------------
+char* from_int_to_inet_addr(uint32_t ip_int) {
+	struct in_addr sin_addr;
+	sin_addr.s_addr = ip_int;
+	char *ip;
+
+	if (htonl(INADDR_ANY) != sin_addr.s_addr) {
+		ip = strdup(inet_ntoa(sin_addr)); // Ip especificada
+	} else {
+		ip = strdup("ANY IP"); // Cualquier Ip
+	}
+
+	return ip;
+}
+
 //-------------------*********************** Deberian ir en otra lib *******************
 //---------------------------------------------------------------------------
 void free_string_splits(char** strings) {

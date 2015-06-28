@@ -63,6 +63,7 @@ void mostrar_error(int number, char* cause);
 
 void setSocketAddrStd(struct sockaddr_in* address, char* ip, int port); // setea el socketaddr para escuchar clientes o conectar con servidor
 void getFromSocketAddrStd(struct sockaddr_in address, char** ip, int* port);
+char* from_int_to_inet_addr(uint32_t ip_int);
 
 void free_string_splits(char** strings);
 int has_all_properties(int cant_properties, char** properties, t_config* conf_arch);

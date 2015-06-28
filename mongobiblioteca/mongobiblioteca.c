@@ -108,62 +108,44 @@ void eliminarBloque(int idArchivo, int nroBloque){
 }
 
 void crearDirectorioEn(struct t_dir* directorioNuevo,struct t_dir* directorioPadre){
-  /*Recibo un directorio y lo inserto en la colección Directorios*/
-
   bson_t *doc;
+  bson_t *query, *update;
   bson_error_t error;
-  bson_t *array;
-  int i=0;
-  struct t_dir * directorioHijo;
-  struct t_arch * archivo;
 
-/*Inserto el directorio*/
-  doc = bson_new();
-  //Preparo los valores id y nombre
-
-  BSON_APPEND_INT32 (doc, "_id", (directorioNuevo->id_directorio));
-  BSON_APPEND_UTF8 (doc, "nombre", (directorioNuevo->nombre));
-
-  //Preparo el array para directorios hijos
-  array = bson_new();
-  bson_append_array_begin (doc, "directorios", 11, array);
-
-
-  if(directorioNuevo->list_dirs){
-    for(i=0; i < list_size(directorioNuevo->list_dirs); i++){
-          directorioHijo = list_get(directorioNuevo->list_dirs, i);
-        BSON_APPEND_INT32 (array, "directorios", (directorioHijo->id_directorio));
-    }
+  if(directorioPadre){
+	  /*Actualizo "hijos" en padre nuevo*/
+	  query = BCON_NEW ("_id", BCON_INT32(directorioPadre->id_directorio));
+  	  update = BCON_NEW ("$push", "{",
+		  	  	  	  	  "directorios", BCON_INT32 (directorioNuevo->id_directorio),
+					  	  "}");
+  	  if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  NULL)) {
+	  	  printf ("Error update directorio padre nuevo\n");
+	  	  bson_destroy (query);
+      	  bson_destroy (update);
+      	  return;
+  	  }
   }
 
-  bson_append_array_end (doc, array);
+  doc = BCON_NEW("_id", BCON_INT32(directorioNuevo->id_directorio),
+		  	  	 "nombre", BCON_UTF8(directorioNuevo->nombre),
+				 "directorios", "[", "]",
+				 "archivos", "[", "]");
 
-  //Preparo el array para los archivos
-
-  array = bson_new();
-  bson_append_array_begin (doc, "archivos", 8, array);
-
-  //FIXME contemplar que si el directorioPadre es NULL, significa que se esta creando el root
-  if(directorioNuevo->list_archs){
-    for(i=0; i < list_size(directorioNuevo->list_archs); i++){
-          archivo = list_get((directorioNuevo->list_archs), i);
-        BSON_APPEND_INT32 (array, "archivos", (archivo->id_archivo));
-    }
-  }
-
-  bson_append_array_end (doc, array);
-
-  //Inserto en la coleccion
+   //Inserto en la coleccion
   if (!mongoc_collection_insert (directorioCollection, MONGOC_INSERT_NONE, doc, NULL, &error)) {
     printf ("%s\n", error.message);
-    bson_destroy (array);
+    if(directorioPadre){
+    	bson_destroy (update);
+    	bson_destroy (query);
+    }
     bson_destroy(doc);
     return;
   }
 
-  printf("Se creó el directorio %s\n", (directorioNuevo->nombre));
-
-  bson_destroy (array);
+  if(directorioPadre){
+      	bson_destroy (update);
+      	bson_destroy (query);
+      }
   bson_destroy(doc);
 }
 
@@ -220,22 +202,22 @@ void eliminarDirectorio(struct t_dir* dir){
   if (!mongoc_collection_remove (directorioCollection, MONGOC_DELETE_SINGLE_REMOVE, query, NULL, &error)) {
     printf ("Error: %s\n", error.message);
   }
-  printf("Directorio eliminado\n");
 
   mongoc_cursor_destroy (cursor);
   bson_destroy (query);
 }
 
-void crearArchivo(struct t_arch* archivoNuevo){
+void crearArchivoEn(struct t_arch* archivoNuevo, struct t_dir * directorio){
     /*Recibo el archivo y lo escribo en mongo*/
     bson_t *doc;
+    bson_t *query, *update;
 
     /*Creo el documento*/
     doc = bson_new();
 
     BSON_APPEND_INT32 (doc, "_id", (archivoNuevo -> id_archivo));
     BSON_APPEND_UTF8 (doc, "nombre", (archivoNuevo->nombre));
-    BSON_APPEND_INT32 (doc, "idDirectorio", (archivoNuevo->parent_dir->id_directorio));
+    BSON_APPEND_INT32 (doc, "idDirectorio", (directorio->id_directorio));
     BSON_APPEND_INT32 (doc, "cant_bloq", (archivoNuevo -> cant_bloq));
 
     void _crearbloques(struct t_bloque* block){
@@ -250,8 +232,24 @@ void crearArchivo(struct t_arch* archivoNuevo){
         bson_destroy (doc);
         return;
     }
+
+    /*Actualizo "hijos" en padre nuevo*/
+  	query = BCON_NEW ("_id", BCON_INT32(directorio->id_directorio));
+    update = BCON_NEW ("$push", "{",
+  	  	  	  	  	  "archivos", BCON_INT32 (archivoNuevo->id_archivo),
+  				  	  "}");
+    if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  NULL)) {
+    	printf ("Error update directorio padre nuevo\n");
+  	  	bson_destroy (query);
+        bson_destroy (update);
+        bson_destroy (doc);
+        return;
+    }
+
     printf("Se ha creado el archivo\n");
 
+    bson_destroy (query);
+    bson_destroy (update);
     bson_destroy (doc);
 }
 
@@ -516,7 +514,43 @@ int ultimoIdArchivo(){
 	return id;
 }
 
-//void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name){
-	/*parent_dir agrego dir como hijo
-	 * dir->parent_dir saco dir como hijo
-	 * dir->name = new_name*/
+void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name){
+	bson_t *query, *update;
+	bson_error_t error;
+
+	/*Actualizo "hijos" en padre nuevo*/
+	query = BCON_NEW ("_id", BCON_INT32(parent_dir->id_directorio));
+	update = BCON_NEW ("$push", "{",
+								 "directorios", BCON_INT32 (dir->id_directorio),
+								 "}");
+	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+		  printf ("%s\n", error.message);
+		  bson_destroy (query);
+		  bson_destroy (update);
+		  return;
+	}
+
+	/*Actualizo "hijos" en padre viejo*/
+	query = BCON_NEW ("_id", BCON_INT32(dir->parent_dir->id_directorio));
+	update = BCON_NEW ("$pull", "{",
+								 "directorios", BCON_INT32 (dir->id_directorio),
+								 "}");
+	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+		  printf ("%s\n", error.message);
+		  bson_destroy (query);
+		  bson_destroy (update);
+		  return;
+	}
+
+	/*Actualizo dir*/
+	query = BCON_NEW ("_id", BCON_INT32(dir->id_directorio));
+	update = BCON_NEW ("$set", "{",
+								 "nombre", BCON_UTF8 (new_name),
+								 "}");
+	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+		  printf ("%s\n", error.message);
+	}
+
+	bson_destroy (update);
+	bson_destroy (query);
+}

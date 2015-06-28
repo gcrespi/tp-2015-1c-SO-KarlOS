@@ -1110,7 +1110,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-//	crearArchivoEn(new_arch,new_arch->parent_dir);XXX
+	crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1124,7 +1124,7 @@ struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 		new_dir->parent_dir = parent_dir;
 		new_dir->list_dirs = list_create();
 		new_dir->list_archs = list_create();
-//	crearDirectorioEn(new_dir,new_dir->parent_dir);
+	crearDirectorioEn(new_dir,new_dir->parent_dir);
 	dir_id_counter++;
 	return new_dir;
 }
@@ -1349,6 +1349,7 @@ void help(){
 void format(){
 	if (warning("Esta seguro que desea formatear el MDFS?")) {
 		dir_destroy(root);
+		eliminarDirectorio(root);
 		set_root();
 	}
 }
@@ -1523,7 +1524,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
-			//	moverDirectorio(dir_aux,parent_dir_aux,dir_name); TODO
+				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;

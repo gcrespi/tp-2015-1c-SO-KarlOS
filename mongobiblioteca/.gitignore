@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Object files
 *.o
 *.ko
@@ -34,3 +35,4 @@
 *.log
 
 *language.settings.xml
+/Debug/

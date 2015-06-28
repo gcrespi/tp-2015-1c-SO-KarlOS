@@ -55,7 +55,6 @@ void cerrarMongo();
 struct t_dir * levantarRaizDeMongo();
 int ultimoIdDirectorio();
 int ultimoIdArchivo();
-void formatMongo();
-
+void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name);
 
 #endif /* MONGOBIBLIOTECA_H_ */

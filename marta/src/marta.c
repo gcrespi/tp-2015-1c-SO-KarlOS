@@ -44,7 +44,7 @@ typedef struct {
 } t_info_job;
 
 typedef struct {
-	uint32_t id_file;
+	char *path;
 	uint32_t amount_blocks;
 } t_info_file;
 
@@ -52,7 +52,7 @@ typedef struct {
 	uint32_t id_temp;
 	char* path;
 	uint32_t id_nodo;
-	uint32_t id_file_origin;
+	char* path_file_origin;
 	uint32_t block_origin;
 //ip_nodo y puerto_nodo?
 //	char result_from_map; //= 1 es el resultado de un map, es el resultado de un reduce
@@ -127,8 +127,8 @@ int send_aborted_job(int socket_job);
 
 //************************************* Interaccion FS **************************************
 int receive_info_file(int socket, t_info_file* info_file);
-int solicitar_info_de_archivo(char *path_file, t_info_file* info_file);
-int locate_block_in_FS(t_info_job info_job, uint32_t id_file, uint32_t block_number, t_list* block_copies);
+int solicitar_info_de_archivo(t_info_file* info_file);
+int locate_block_in_FS(t_info_job info_job, char* path_file, uint32_t block_number, t_list* block_copies);
 int obtenerAceptacionDeFS(int socket);
 
 //***************************************** Principal *******************************************
@@ -139,7 +139,7 @@ int increment_and_take_last_job_id();
 
 int get_info_files_from_FS(char **paths_files, t_list* file_list);
 
-t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list);
+t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int sockjob);
 int plan_reduces();
@@ -197,12 +197,14 @@ void free_info_job(t_info_job info_job) {
 
 //---------------------------------------------------------------------------
 void free_info_file(t_info_file* self) {
+	free(self->path);
 	free(self);
 }
 
 //---------------------------------------------------------------------------
 void free_temp_map(t_temp_map* self) {
 	free(self->path);
+	free(self->path_file_origin);
 	free(self);
 
 }
@@ -210,7 +212,7 @@ void free_temp_map(t_temp_map* self) {
 //---------------------------------------------------------------------------
 void mostrar_info_file(t_info_file* self) {
 
-	log_debug(paranoid_log, "ID Archivo: %i Cantidad Bloques: %i", self->id_file, self->amount_blocks);
+	log_debug(paranoid_log, "Archivo: %s Cantidad Bloques: %i", self->path, self->amount_blocks);
 }
 
 //---------------------------------------------------------------------------
@@ -410,9 +412,7 @@ int receive_info_file(int socket, t_info_file* info_file) {
 	switch (prot) {
 	case INFO_ARCHIVO:
 		log_debug(paranoid_log, "Recibiendo info del Archivo");
-		int result = receive_int_in_order(socket, &(info_file->id_file));
-		result = (result > 0) ? receive_int_in_order(socket, &(info_file->amount_blocks)) : result;
-		return result;
+		return receive_int_in_order(socket, &(info_file->amount_blocks));
 		break;
 
 	case ARCHIVO_NO_DISPONIBLE:
@@ -443,16 +443,16 @@ int receive_info_file(int socket, t_info_file* info_file) {
 }
 
 //---------------------------------------------------------------------------
-int solicitar_info_de_archivo(char *path_file, t_info_file* info_file) {
+int solicitar_info_de_archivo(t_info_file* info_file) {
 
 	int result = 1;
 
 	t_buffer* solicitud_archivo_buff;
 
-	log_debug(paranoid_log, "Pidiendo info del file: %s", path_file);
+	log_debug(paranoid_log, "Pidiendo info del file: %s", info_file->path);
 
 	solicitud_archivo_buff = buffer_create_with_protocol(INFO_ARCHIVO_REQUEST);
-	buffer_add_string(solicitud_archivo_buff, path_file);
+	buffer_add_string(solicitud_archivo_buff, info_file->path);
 
 	pthread_mutex_lock(&conex_fs_ready);
 	result = send_buffer_and_destroy(socket_fs, solicitud_archivo_buff);
@@ -461,14 +461,14 @@ int solicitar_info_de_archivo(char *path_file, t_info_file* info_file) {
 	pthread_mutex_unlock(&conex_fs_ready);
 
 	if (result <= 0) {
-		log_error(paranoid_log, "No se Pudo tomar info del Archivo: %s", path_file);
+		log_error(paranoid_log, "No se Pudo tomar info del Archivo: %s", info_file->path);
 	}
 
 	return result;
 }
 
 //---------------------------------------------------------------------------
-int receive_block_location(int socket, t_list* block_copies, uint32_t id_file, uint32_t block_number) {
+int receive_block_location(int socket, t_list* block_copies, char* path_file, uint32_t block_number) {
 
 	int prot;
 
@@ -477,11 +477,11 @@ int receive_block_location(int socket, t_list* block_copies, uint32_t id_file, u
 	switch (prot) {
 
 	case BLOCK_LOCATION:
-		log_debug(paranoid_log, "Obteniendo Ubicación del Archivo: %i Bloque: %i", id_file, block_number);
+		log_debug(paranoid_log, "Obteniendo Ubicación del Archivo: %s Bloque: %i", path_file, block_number);
 		break;
 
 	case LOST_BLOCK:
-		log_debug(paranoid_log, "El bloque: %i del Archivo: %i no se encuentra en el MDFS", block_number, id_file);
+		log_debug(paranoid_log, "El bloque: %i del Archivo: %s no se encuentra en el MDFS", block_number, path_file);
 		return -2;
 		break;
 
@@ -523,16 +523,16 @@ int receive_block_location(int socket, t_list* block_copies, uint32_t id_file, u
 }
 
 //---------------------------------------------------------------------------
-int locate_block_in_FS(t_info_job info_job, uint32_t id_file, uint32_t block_number, t_list* block_copies) {
+int locate_block_in_FS(t_info_job info_job, char* path_file, uint32_t block_number, t_list* block_copies) {
 
 	t_buffer* block_request = buffer_create_with_protocol(BLOCK_LOCATION_REQUEST);
-	buffer_add_int(block_request, id_file);
+	buffer_add_string(block_request, path_file);
 	buffer_add_int(block_request, block_number);
 
 	pthread_mutex_lock(&conex_fs_ready);
 	send_buffer_and_destroy(socket_fs, block_request);
 
-	int result = receive_block_location(socket_fs, block_copies, id_file, block_number);
+	int result = receive_block_location(socket_fs, block_copies, path_file, block_number);
 	pthread_mutex_unlock(&conex_fs_ready);
 
 	return result;
@@ -568,7 +568,8 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list) {
 
 	for (i = 0; (paths_files[i] != NULL) && (result > 0); i++) {
 		info_file = malloc(sizeof(t_info_file));
-		result = solicitar_info_de_archivo(paths_files[i], info_file);
+		info_file->path = strdup(paths_files[i]);
+		result = solicitar_info_de_archivo(info_file);
 
 		if (result > 0) {
 			list_add(file_list, info_file);
@@ -619,17 +620,17 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temp_map_li
 
 
 //---------------------------------------------------------------------------
-t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list) {
+t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list) {
 
-	log_info(paranoid_log, "Planificando map del Archivo:%i Bloque: %i ", id_file, block_number);
+	log_info(paranoid_log, "Planificando map del Archivo:%s Bloque: %i ", path_file, block_number);
 
 	t_block_copy* selected_copy;
 	t_map_dest* self;
 
 	t_list* block_copies = list_create();
 
-	if (locate_block_in_FS(info_job, id_file, block_number, block_copies) <= 0) {
-		log_error(paranoid_log, "No se pudieron localizar las copias del Archivo: %i, Bloque: %i", id_file, block_number);
+	if (locate_block_in_FS(info_job, path_file, block_number, block_copies) <= 0) {
+		log_error(paranoid_log, "No se pudieron localizar las copias del Archivo: %s, Bloque: %i", path_file, block_number);
 		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
 		return NULL;
 	}
@@ -656,7 +657,7 @@ t_map_dest* planificar_map(t_info_job info_job, uint32_t id_file, uint32_t block
 		self->block = selected_copy->block;
 		self->temp_file_name = string_from_format("map_%i_%i.temp", info_job.id_job, self->block);
 	} else {
-		log_error(paranoid_log,"No hay copias Activas del Archivo:%i Bloque: %i ", id_file, block_number);
+		log_error(paranoid_log,"No hay copias Activas del Archivo:%s Bloque: %i ", path_file, block_number);
 		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
 		return NULL;
 	}
@@ -754,7 +755,7 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temp_list
 	temp_map->id_temp = ++(*last_id_temp);
 	temp_map->path = strdup(pending_map->map_dest->temp_file_name);
 	temp_map->id_nodo = pending_map->map_dest->id_nodo;
-	temp_map->id_file_origin = pending_map->file->id_file;
+	temp_map->path_file_origin = strdup(pending_map->file->path);
 	temp_map->block_origin = pending_map->block;
 
 	list_add(temp_list, temp_map);
@@ -791,7 +792,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 
 		for (j = 0; j < file_info->amount_blocks; j++) {
 
-			map_dest = planificar_map(info_job, file_info->id_file, j, &last_id_map, temp_list);
+			map_dest = planificar_map(info_job, file_info->path, j, &last_id_map, temp_list);
 			result = (map_dest != NULL) ? order_map_to_job(map_dest, sockjob) : -2;
 
 			if (result > 0) {
@@ -827,7 +828,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 				pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
 
 				free_map_dest(pending_map->map_dest);
-				pending_map->map_dest = planificar_map(info_job, pending_map->file->id_file, pending_map->block, &last_id_map, temp_list);
+				pending_map->map_dest = planificar_map(info_job, pending_map->file->path, pending_map->block, &last_id_map, temp_list);
 
 				result = (pending_map->map_dest != NULL) ? order_map_to_job(pending_map->map_dest, sockjob) : -2;
 

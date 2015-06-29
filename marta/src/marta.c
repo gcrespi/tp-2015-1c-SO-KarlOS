@@ -61,6 +61,11 @@ typedef struct {
 	//XXX falta temp total del nodo
 } t_temp_nodo;
 
+typedef struct {
+	uint32_t id_nodo;
+	char* file_name;
+} t_final_result;
+
 //************************* Estructura Por cada Map ************************
 
 typedef struct {
@@ -150,8 +155,8 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list);
 t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob);
-int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t* nodo_id_of_final_reduce);
-int save_result_file_in_MDFS(t_info_job info_job, uint32_t id_nodo);
+int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
+int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result);
 
 void hilo_conex_job(t_hilo_job *job);
 void esperar_finalizacion_hilo_conex_job(t_hilo_job* job);
@@ -222,6 +227,11 @@ void free_temp_nodo(t_temp_nodo* self) {
 
 	list_destroy_and_destroy_elements(self->temps_map,(void *) free_temp_map);
 	free(self);
+}
+
+//---------------------------------------------------------------------------
+void free_final_result(t_final_result* self) {
+	free(self->file_name);
 }
 
 
@@ -788,7 +798,7 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo,
 		cant_mismo_nodo = 0;
 
 		cant_mismo_nodo += count_map_temps_in_node(temps_nodo, block_copy->id_nodo);
-//		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);XXX
+		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);//XXX
 
 		score += cant_mismo_nodo;
 	}
@@ -1110,7 +1120,23 @@ int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
 }
 
 //---------------------------------------------------------------------------
-int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t* nodo_id_of_final_reduce) {
+uint32_t id_from_nodo_host(t_list* temps_nodo) {
+
+	int _amount_temps(t_temp_nodo* temp_nodo) {
+		return list_size(temp_nodo->temps_map);
+	}
+
+	t_temp_nodo* _mayorSegunCantidadTemps(t_temp_nodo* nodo1, t_temp_nodo* nodo2) {
+		return mayorSegun(nodo1, nodo2, (void *) _amount_temps);
+	}
+
+	t_temp_nodo* nodo_host = foldl1((void *) _mayorSegunCantidadTemps,temps_nodo);
+
+	return nodo_host->id_nodo;
+}
+
+//---------------------------------------------------------------------------
+int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result) {
 
 	uint32_t last_id_reduce = 0;
 	int result = 1;
@@ -1130,13 +1156,13 @@ int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t*
 			return -1;
 		}
 
+		final_result->id_nodo = id_from_nodo_host(temps_nodo);
+		final_result->file_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
+
 		t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
 		buffer_add_int(order_reduce_buff,++(last_id_reduce));
-
-		char* path_result = string_from_format("final_result_job_%i.temp",info_job.id_job);
-		buffer_add_string(order_reduce_buff,path_result);
-		free(path_result);
-
+		buffer_add_string(order_reduce_buff,final_result->file_name);
+		buffer_add_int(order_reduce_buff, final_result->id_nodo);
 		buffer_add_int(order_reduce_buff, nodes_amount);
 
 		void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
@@ -1148,11 +1174,11 @@ int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t*
 
 		if(result < 0) {
 			log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce al Job");
+			free_final_result(final_result);
 			return -1;
 		}
 
 
-		*nodo_id_of_final_reduce = 1; //XXX
 //		result = (result > 0)? receive_result_reduce() : result;
 //	}
 
@@ -1196,15 +1222,14 @@ int receive_save_result(int socket, char* dest_path) {
 }
 
 //---------------------------------------------------------------------------
-int save_result_file_in_MDFS(t_info_job info_job, uint32_t id_nodo) {
+int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result) {
 
-	char* src_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
 
 	t_buffer* save_result_request_buff = buffer_create_with_protocol(SAVE_RESULT_REQUEST);
-	buffer_add_int(save_result_request_buff,id_nodo);
-	buffer_add_string(save_result_request_buff,src_name);
+	buffer_add_int(save_result_request_buff,final_result->id_nodo);
+	buffer_add_string(save_result_request_buff,final_result->file_name);
 	buffer_add_string(save_result_request_buff,info_job.path_result);
-	free(src_name);
+	free_final_result(final_result);
 
 	pthread_mutex_lock(&conex_fs_ready);
 	int result = send_buffer_and_destroy(socket_fs, save_result_request_buff);
@@ -1223,9 +1248,9 @@ void hilo_conex_job(t_hilo_job *job) {
 	t_info_job info_job;
 	t_list* file_list = list_create();
 	t_list* temps_nodo = list_create();
+	t_final_result final_result;
 
 	int result = 1;
-	uint32_t id_nodo_of_final_result;
 
 	getFromSocketAddrStd(job->socketaddr_cli, &ip_job, &port_job);
 
@@ -1236,8 +1261,8 @@ void hilo_conex_job(t_hilo_job *job) {
 	result = (result > 0) ? receive_info_job(job, &info_job) : result;
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
 	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
-	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd, &id_nodo_of_final_result) : result;
-	result = (result > 0) ? save_result_file_in_MDFS(info_job, id_nodo_of_final_result) : result;
+	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd, &final_result) : result;
+	result = (result > 0) ? save_result_file_in_MDFS(info_job, &final_result) : result;
 
 	if (result > 0) {
 		send_finished_job(job->sockfd);

@@ -199,6 +199,7 @@ void esperar_instrucciones_de_MaRTA() {
 		char* path_temp_result;
 		uint32_t nodes_amount = 0;
 		int result = 1;
+		uint32_t id_nodo_host;
 
 		prot = receive_protocol_in_order(socket_marta);
 
@@ -232,11 +233,12 @@ void esperar_instrucciones_de_MaRTA() {
 			//XXX abrir hilo de reduce
 			result = (result > 0)? receive_int_in_order(socket_marta, &id_reduce) : result;
 			result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path_temp_result) : result;
+			result = (result > 0)? receive_int_in_order(socket_marta, &id_nodo_host) : result;
 			result = (result > 0)? receive_int_in_order(socket_marta, &nodes_amount) : result;
 
 			if(result > 0) {
-				log_info(paranoid_log, "Realizando Operación de Reduce ID: %i, Result: %s, Cantidad Nodos: %i", id_reduce,
-						path_temp_result, nodes_amount);
+				log_info(paranoid_log, "Realizando Operación de Reduce ID: %i, Result: %s, ID Nodo Host: %i, Cantidad Nodos: %i",
+						id_reduce, path_temp_result, id_nodo_host, nodes_amount);
 			}
 			int i,j;
 			free(path_temp_result);

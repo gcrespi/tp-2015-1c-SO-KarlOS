@@ -103,8 +103,8 @@ void solicitarConexionConNodo(int *);
 int obtener_puerto_job();
 void obtener_hilos_jobs(int, t_list*);
 int realizar_Map(int);
-int iniciar_Tarea_Map(char *,char *,void (void*));
-void escribir_Sobre_Archivo(FILE *);
+int iniciar_Tarea_Map(char *,char *, uint32_t);
+void escribir_Sobre_Archivo(FILE *, uint32_t);
 
 
 //Main####################################################################################################
@@ -553,24 +553,35 @@ int realizar_Map(int socket) {
 	//signal(SIGPIPE, sigpipe_f);
 	int result = 1;
     uint32_t nroBloque;
+    uint32_t id;
     char* map;
+    char* destino;
+    result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+	result = (result > 0) ? receive_int_in_order(socket, &id) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
-	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &destino) : result;
 
-	puts("Realizando Tarea de maps\n");
-	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1","salida.txt",(void *) escribir_Sobre_Archivo);
-								//path de map a aplicar 	   donde guardar resultados
+	if (id == conf.id){
 
+	// aca tendria que ir una funcion que me convierta el array recibido del job en un
+		//archivo para despues aplicar el map
+
+	puts("Realizando Tarea de map\n");
+	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
+                       	//path de map a aplicar 	              nombre result
+	} else puts("No soy yo");
+
+	free(map);
+	free(destino);
 	return result;
 }
 
 //----------------------------------------------------------------------------
-int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida,void (*escribirArchivoEntrada) (void*))
+int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBloque)
 {
 	FILE *entradaARedirigir = NULL;
 
 	char *comandoEntero= malloc(strlen(pathPrograma)+11+strlen(pathArchivoSalida));
-
 
 	sprintf(comandoEntero,"%s | sort > %s",pathPrograma,pathArchivoSalida);
 
@@ -579,7 +590,7 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida,void (*escribir
 	if (entradaARedirigir != NULL)
 	{
 		printf("empece\n");
-		escribirArchivoEntrada(entradaARedirigir);
+		escribir_Sobre_Archivo(entradaARedirigir, nroBloque);
 		printf("termine\n");
 		pclose (entradaARedirigir);
 
@@ -593,11 +604,11 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida,void (*escribir
 	return 0;
 }
 //----------------------------------------------------------------------------
-void escribir_Sobre_Archivo(FILE *archivo)
+void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
 
 		int salida;
-		salida= fprintf (archivo,"%s",&data[2]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
+		salida= fprintf (archivo,"%s",&data[indice]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
 
 		if(salida<0){
 			printf("Error in fprintf\n");

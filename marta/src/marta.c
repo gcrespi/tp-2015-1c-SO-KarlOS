@@ -137,6 +137,7 @@ int receive_info_file(int socket, t_info_file* info_file);
 int solicitar_info_de_archivo(t_info_file* info_file);
 int locate_block_in_FS(char* path_file, uint32_t block_number, t_list* block_copies);
 int obtenerAceptacionDeFS(int socket);
+int locate_nodo_in_FS(uint32_t id_nodo,uint32_t *ip_nodo,uint32_t *puerto_nodo);
 
 //***************************************** Principal *******************************************
 void terminar_hilos(); //XXX
@@ -149,8 +150,8 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list);
 t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob);
-int plan_reduces(t_info_job info_job, t_list* temp_map_list, int sockjob);
-int save_result_file_in_MDFS();
+int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t* nodo_id_of_final_reduce);
+int save_result_file_in_MDFS(t_info_job info_job, uint32_t id_nodo);
 
 void hilo_conex_job(t_hilo_job *job);
 void esperar_finalizacion_hilo_conex_job(t_hilo_job* job);
@@ -368,10 +369,7 @@ int locate_nodo(uint32_t id_nodo, uint32_t *ip_nodo, uint32_t *puerto_nodo) {
 	if(found)
 		return 1;
 
-//	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo); XXX Implementar en el FS
-
-	*ip_nodo = inet_addr("127.0.0.1");
-	*puerto_nodo = 3500 + id_nodo;
+	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo);
 
 	if(result > 0) {
 		pthread_mutex_lock(&node_list_mutex);
@@ -404,11 +402,10 @@ int update_nodo_location(uint32_t id_nodo) {
 	int _isNodeSearched(t_info_nodo* info_nodo) {
 		return info_nodo->id_nodo == id_nodo;
 	}
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
 
-//	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo); XXX Implementar en el FS
-
-	uint32_t ip_nodo = inet_addr("127.0.0.1");
-	uint32_t puerto_nodo = 3500 + id_nodo;
+	result = locate_nodo_in_FS(id_nodo, &ip_nodo, &puerto_nodo);
 
 	if(result > 0) {
 		pthread_mutex_lock(&node_list_mutex);
@@ -609,11 +606,7 @@ int receive_block_location(int socket, t_list* block_copies, char* path_file, ui
 	for (i = 0; (i < amount_copies) && (result > 0); i++) {
 		block_copy = malloc(sizeof(t_map_dest));
 
-		uint32_t ip,puerto;
-
-		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->id_nodo)) : result;
-		result = (result > 0) ? receive_int_in_order(socket, &ip) : result; // XXX sacar del FS
-		result = (result > 0) ? receive_int_in_order(socket, &puerto) : result; // XXX sacar del FS
+ 		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->id_nodo)) : result;
 		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->block)) : result;
 
 		if (result > 0) {
@@ -1117,7 +1110,7 @@ int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
 }
 
 //---------------------------------------------------------------------------
-int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob) {
+int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, uint32_t* nodo_id_of_final_reduce) {
 
 	uint32_t last_id_reduce = 0;
 	int result = 1;
@@ -1130,6 +1123,7 @@ int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob) {
 //
 //		return 1;
 //	} else {
+
 		uint32_t nodes_amount = list_size(temps_nodo);
 		if(nodes_amount == 0) {
 			log_error(paranoid_log,"No se puede Realizar Reduce de 0 Nodos!!!");
@@ -1138,7 +1132,11 @@ int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob) {
 
 		t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
 		buffer_add_int(order_reduce_buff,++(last_id_reduce));
-		buffer_add_string(order_reduce_buff,info_job.path_result);
+
+		char* path_result = string_from_format("final_result_job_%i.temp",info_job.id_job);
+		buffer_add_string(order_reduce_buff,path_result);
+		free(path_result);
+
 		buffer_add_int(order_reduce_buff, nodes_amount);
 
 		void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
@@ -1153,14 +1151,68 @@ int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob) {
 			return -1;
 		}
 
+
+		*nodo_id_of_final_reduce = 1; //XXX
 //		result = (result > 0)? receive_result_reduce() : result;
 //	}
 
 	return 1;
 }
 
+
 //---------------------------------------------------------------------------
-int save_result_file_in_MDFS() {
+int receive_save_result(int socket, char* dest_path) {
+
+	int prot;
+
+	prot = receive_protocol_in_order(socket);
+
+	switch (prot) {
+
+	case SAVE_OK:
+		log_debug(paranoid_log, "Se Guardó Correctamente el Resultado Final en: %s", dest_path);
+		break;
+
+	case SAVE_ABORT:
+		log_error(paranoid_log, "No se pudo guardar el Resultado Final en: %s", dest_path);
+		return -2;
+		break;
+
+	case DISCONNECTED:
+		log_error(paranoid_log, "FS se Desconectó de forma inesperada");
+		return 0;
+		break;
+
+	case -1:
+		return -1;
+		break;
+
+	default:
+		log_error(paranoid_log, "Protocolo Inesperado %i (MaRTA PANIC!)", prot);
+		return -1;
+		break;
+	}
+	return prot;
+}
+
+//---------------------------------------------------------------------------
+int save_result_file_in_MDFS(t_info_job info_job, uint32_t id_nodo) {
+
+	char* src_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
+
+	t_buffer* save_result_request_buff = buffer_create_with_protocol(SAVE_RESULT_REQUEST);
+	buffer_add_int(save_result_request_buff,id_nodo);
+	buffer_add_string(save_result_request_buff,src_name);
+	buffer_add_string(save_result_request_buff,info_job.path_result);
+	free(src_name);
+
+	pthread_mutex_lock(&conex_fs_ready);
+	int result = send_buffer_and_destroy(socket_fs, save_result_request_buff);
+
+	result = (result > 0) ? receive_save_result(socket_fs, info_job.path_result) : result;
+	pthread_mutex_unlock(&conex_fs_ready);
+
+
 	return 1;
 }
 
@@ -1173,6 +1225,7 @@ void hilo_conex_job(t_hilo_job *job) {
 	t_list* temps_nodo = list_create();
 
 	int result = 1;
+	uint32_t id_nodo_of_final_result;
 
 	getFromSocketAddrStd(job->socketaddr_cli, &ip_job, &port_job);
 
@@ -1183,8 +1236,8 @@ void hilo_conex_job(t_hilo_job *job) {
 	result = (result > 0) ? receive_info_job(job, &info_job) : result;
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
 	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
-	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd) : result;
-	result = (result > 0) ? save_result_file_in_MDFS() : result; //XXX falta Desarrollar
+	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd, &id_nodo_of_final_result) : result;
+//	result = (result > 0) ? save_result_file_in_MDFS(info_job, id_nodo_of_final_result) : result; //XXX Implementar en FS
 
 	if (result > 0) {
 		send_finished_job(job->sockfd);

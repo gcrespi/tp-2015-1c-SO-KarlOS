@@ -42,7 +42,7 @@
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
 #define BLOCK_SIZE 4*1024 //<-4KB               //20*1024*1024 //<-20MB
-#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos
+#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
 enum t_estado_nodo {
@@ -398,11 +398,8 @@ void buffer_add_block_location(t_buffer *buffer, struct t_arch *file, int block_
 	buffer_add_int(buffer,ammount_copies);
 
 	void charge_buffer(struct t_copia_bloq* copy){
-		struct t_nodo *nodo = find_nodo_with_ID(copy->id_nodo);
 
 		buffer_add_int(buffer, copy->id_nodo);
-		buffer_add_int(buffer, nodo->ip_listen);
-		buffer_add_int(buffer, nodo->port_listen);
 		buffer_add_int(buffer, copy->bloq_nodo);
 	}
 	list_iterate(list_available_copies, (void*) charge_buffer);
@@ -416,6 +413,7 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 	int prot = receive_protocol_in_order(*martaSock);
 	int result = 0;
 	char *path_file;
+	uint32_t id_nodo;
 
 	uint32_t block_number;
 
@@ -480,6 +478,35 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 
 		if(result < 0) {
 			log_error(logger, "No se pudo enviar a MaRTA Info de Bloque");
+			return -1;
+		}
+
+		if(result == 0) {
+			log_warning(logger, "MaRTA se Desconectó");
+			FD_CLR(*martaSock, master);
+			*martaSock = -1;
+			return 1;
+		}
+		break;
+
+	case NODO_LOCATION_REQUEST:
+		result = receive_int_in_order(*martaSock, &id_nodo);
+
+		if(result > 0) {
+			log_info(logger, "Solicitud de MaRTA de Localización de Nodo: %i",id_nodo);
+			struct t_nodo* nodo = find_nodo_with_ID(id_nodo);
+			t_buffer* nodo_location_buff;
+			if(nodo != NULL) {
+				nodo_location_buff = buffer_create_with_protocol(NODO_LOCATION);
+				buffer_add_int(nodo_location_buff,nodo->ip_listen);
+				buffer_add_int(nodo_location_buff,nodo->port_listen);
+			} else {
+				nodo_location_buff = buffer_create_with_protocol(LOST_NODO);
+			}
+			result = send_buffer_and_destroy(*martaSock, nodo_location_buff);
+		}
+		if(result < 0) {
+			log_error(logger, "No se pudo enviar a MaRTA Localización de Nodo");
 			return -1;
 		}
 
@@ -1110,7 +1137,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-	crearArchivoEn(new_arch,new_arch->parent_dir);
+//	crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1524,7 +1551,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
-				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
+//				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;

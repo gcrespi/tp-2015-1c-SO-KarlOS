@@ -41,7 +41,7 @@
 #define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
-#define BLOCK_SIZE 4*1024 //<-4KB               //20*1024*1024 //<-20MB
+//#define BLOCK_SIZE 4*1024 //<-4KB               //20*1024*1024 //<-20MB Ahora esta en librería
 #define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo

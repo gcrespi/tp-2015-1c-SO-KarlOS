@@ -70,7 +70,7 @@ typedef struct {
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
-#define block_size 4*1024 // tamaño de cada bloque del dat
+//#define BLOCK_SIZE 4*1024 // tamaño de cada bloque del dat
 t_log* logger;
 sem_t semaforo1;
 sem_t semaforo2;
@@ -84,7 +84,7 @@ void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del 
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
 int enviar_info_nodo(int, struct info_nodo*);
 void free_conf_nodo();
-void mapearArchivo();
+int mapearArchivo();
 void cargarBloque(int, char*, int);
 void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int*);
@@ -127,7 +127,12 @@ int main(void) {
 	struct info_nodo info_envio;
 	setNodoToSend(&info_envio);
 
-	mapearArchivo();
+	if(mapearArchivo() == -1) {
+		free_conf_nodo();
+		finalizar_mutexs();
+		log_destroy(logger);
+		return -1;
+	}
 
     socket_fs = solicitarConexionConFileSystem(conf);
 
@@ -159,6 +164,54 @@ int main(void) {
 }
 
 //#########################################################################################################
+
+//----------------------------------------------------------------------------------------------------
+int abrirArchivoDeDatosVerificandoEstado(char* path) {
+
+	struct stat stat_file;
+	int fd;
+
+	if(stat(path, &stat_file) == 0) {
+		if(stat_file.st_size != BLOCK_SIZE * conf.cant_bloques) {
+
+			if(!conf.nodo_nuevo) {
+				log_error(logger, "El Archivo de Datos del Nodo no cohincide con el tamaño que debería tener (%i * %i Bytes)",
+						conf.cant_bloques, BLOCK_SIZE);
+				log_info(logger,"Para Redimensionar el archivo reinicie el proceso con la opción Nodo Nuevo seteada");
+				log_warning(logger,"Atención, al realizar esto perderá todos los datos del nodo");
+				return -1;
+			}
+
+			log_info(logger,"Llevando archivo de Datos a tamaño Deseado");
+
+			if(truncate(path, BLOCK_SIZE * conf.cant_bloques) != 0) {
+				log_error(logger,"No se pudo truncar el archivo de Datos");
+				return -1;
+			}
+		}
+
+		if ((fd = open(path, O_RDWR)) == -1) {
+			log_error(logger,"No se pudo abrir el archivo de Datos");
+			return -1;
+		}
+
+		return fd;
+	}
+
+	if(!conf.nodo_nuevo) {
+		log_error(logger,"No se encontró el archivo de Datos ");
+		log_info(logger,"Para Crear uno nuevo Reinicie el proceso con la opción Nodo Nuevo seteada");
+		return -1;
+	}
+
+	if((fd = creat(path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1) {
+		log_error(logger,"No se pudo Crear el archivo de Datos ");
+		return -1;
+	}
+
+	return fd;
+}
+
 //----------------------------------------------------------------------------------------------------
 int obtener_puerto_job(){
 	int listener_job;
@@ -359,9 +412,9 @@ int recibir_Bloque(int socket) {
 
     result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
 	pthread_mutex_lock( &mutex[nroBloque] );
-	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[nroBloque*block_size]) : result;
+	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[nroBloque*BLOCK_SIZE]) : result;
 	if(result > 0) {
-		data[nroBloque*block_size + longInfo]='\0';
+		data[nroBloque*BLOCK_SIZE + longInfo]='\0';
 	}
 	pthread_mutex_unlock( &mutex[nroBloque] );
 	return result;
@@ -375,10 +428,10 @@ int enviar_bloque(int socket) {
     uint32_t nroBloque;
 
     result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
-    uint32_t largoBloque = strlen(&data[nroBloque*block_size]);
+    uint32_t largoBloque = strlen(&data[nroBloque*BLOCK_SIZE]);
 
     pthread_mutex_lock(&mutex[nroBloque]);
-	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*block_size],largoBloque+1) : result;
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*BLOCK_SIZE],largoBloque+1) : result;
 	pthread_mutex_unlock(&mutex[nroBloque]);
 	return result;
 }
@@ -481,17 +534,18 @@ void free_conf_nodo() {
 }
 
 //---------------------------------------------------------------------------
-void mapearArchivo() {
+int mapearArchivo() {
 
 	int fd;
 	struct stat sbuf;
-	char* path = conf.archivo_bin;
 
 	log_info(logger, "inicio de mapeo");
 
-	if ((fd = open(path, O_RDWR)) == -1) {
-		perror("open()");
-		exit(1);
+	fd = abrirArchivoDeDatosVerificandoEstado(conf.archivo_bin);
+
+	if(fd == -1) {
+		log_error(logger,"no se pudo mappear el archivo de Datos!");
+		return -1;
 	}
 
 	if (fstat(fd, &sbuf) == -1) {
@@ -507,17 +561,19 @@ void mapearArchivo() {
 	}
 	sem_post(&semaforo1);
 	log_info(logger,"mapeo correcto");
+
+	return 1;
 }
 //---------------------------------------------------------------------------
 void cargarBloque(int nroBloque, char* info, int offset_byte) {
-	int pos_a_escribir = nroBloque * block_size + offset_byte;
+	int pos_a_escribir = nroBloque * BLOCK_SIZE + offset_byte;
 	memcpy(data + pos_a_escribir, info, strlen(info));
 	//data[pos_a_escribir+strlen(info)]='\0';
 
 }
 //---------------------------------------------------------------------------
 void mostrarBloque(int nroBloque) {
-	printf("info bloque: %s\n", &(data[nroBloque * block_size]));
+	printf("info bloque: %s\n", &(data[nroBloque * BLOCK_SIZE]));
 }
 
 //----------------------------------------------------------------------------

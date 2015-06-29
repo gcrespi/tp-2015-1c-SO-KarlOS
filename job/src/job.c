@@ -353,7 +353,6 @@ void esperar_instrucciones_de_MaRTA() {
 					free(path);
 				}
 			}
-//>>>>>>> branch 'master' of https://github.com/sisoputnfrba/tp-2015-1c-karlos
 
 			break;
 

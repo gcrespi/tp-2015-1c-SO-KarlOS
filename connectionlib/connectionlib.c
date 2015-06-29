@@ -314,7 +314,11 @@ int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length
 	size_t readed = 0;
 
 	struct stat stat_file;
-	stat(src_path, &stat_file);
+	if( stat(src_path, &stat_file) == -1) {
+		mostrar_error(-1, "Error while stat");
+		return -1;
+	}
+
 	int file_descriptor = NULL;
 	char* buffer;
 	int to_be_read;

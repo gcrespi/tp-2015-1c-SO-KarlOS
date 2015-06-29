@@ -44,8 +44,22 @@ typedef struct {
 	char* path_result_file;
 } info_new_job;
 
+typedef struct {
+	uint32_t id_map;
+	uint32_t id_nodo;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
+	t_list *temp_files_names;
+	t_list *list_nodos;
+	char* temp_file_name;
 
+}t_reduce_dest;
 
+typedef struct {
+	uint32_t id_reduce;
+	pthread_t *thr;
+
+}t_hilo_reduce;
 
 typedef struct {
 	uint32_t id_map;
@@ -63,27 +77,32 @@ typedef struct {
 
 
 //########################################  Prototipos  #########################################
-void free_conf_job(conf_job* conf);
+void free_conf_job();
 void free_info_job(info_new_job* info);
 
 void free_map_dest(t_map_dest* self);
 void free_hilo_map(t_hilo_map* self);
 
-void levantar_arch_conf_job(conf_job* conf); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
+void levantar_arch_conf_job(); // devuelve una estructura con toda la info del archivo de configuracion "job.cfg"
 int enviar_nuevo_job_a_MaRTA(info_new_job info_job);
 void esperar_instrucciones_de_MaRTA();
-void set_new_job(conf_job conf, info_new_job* new_job);
+void set_new_job(info_new_job* new_job);
 //int establecer_conexion_nodo(int socket_nodo);
 //void enviar_script_a_nodo()
 int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo);
 //int recibir_info_map(int socket_job);
-
+int enviar_infoMap_job(int socket_job,t_map_dest* map_dest);
+void hilo_map_job(t_map_dest* map_dest);
+int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest);
+void hilo_reduce_job(t_reduce_dest* reduce_dest);
 
 //######################################  Variables Globales  #######################################
 t_log* paranoid_log;
 
 pthread_mutex_t conex_marta_ready;
 int socket_marta;
+
+conf_job* conf;
 
 
 //######################################  Funciones  #######################################
@@ -94,7 +113,7 @@ void free_info_job(info_new_job* info) {
 }
 
 //---------------------------------------------------------------------------
-void free_conf_job(conf_job* conf) {
+void free_conf_job() {
 	free(conf->ip_MaRTA);
 	free(conf->path_map);
 	free(conf->path_reduce);
@@ -116,15 +135,15 @@ void free_hilo_map(t_hilo_map* self) {
 }
 
 //-------------------------------------------------------------------------------------
-int solicitarConexionConMarta(conf_job conf) {
+int solicitarConexionConMarta() {
 
 	log_debug(paranoid_log, "Solicitando conexión con MaRTA...");
-	int socketfd_MaRTA = solicitarConexionCon(conf.ip_MaRTA, conf.port_MaRTA);
+	int socketfd_MaRTA = solicitarConexionCon(conf->ip_MaRTA, conf->port_MaRTA);
 
 	if (socketfd_MaRTA != -1) {
-		log_info(paranoid_log, "Conexión con MaRTA establecida IP: %s, Puerto: %i", conf.ip_MaRTA, conf.port_MaRTA);
+		log_info(paranoid_log, "Conexión con MaRTA establecida IP: %s, Puerto: %i", conf->ip_MaRTA, conf->port_MaRTA);
 	} else {
-		log_error(paranoid_log, "Conexión con MaRTA FALLIDA!!! IP: %s, Puerto: %i", conf.ip_MaRTA, conf.port_MaRTA);
+		log_error(paranoid_log, "Conexión con MaRTA FALLIDA!!! IP: %s, Puerto: %i", conf->ip_MaRTA, conf->port_MaRTA);
 		exit(-1);
 	}
 
@@ -132,10 +151,10 @@ int solicitarConexionConMarta(conf_job conf) {
 }
 
 //---------------------------------------------------------------------------
-void set_new_job(conf_job conf, info_new_job* new_job) {
-	new_job->combiner = conf.combiner;
-	new_job->path_result_file = strdup(conf.path_result_file);
-	new_job->paths_to_apply_files = strdup(conf.paths_to_apply_files);
+void set_new_job(info_new_job* new_job) {
+	new_job->combiner = conf->combiner;
+	new_job->path_result_file = strdup(conf->path_result_file);
+	new_job->paths_to_apply_files = strdup(conf->paths_to_apply_files);
 }
 
 //---------------------------------------------------------------------------
@@ -155,6 +174,7 @@ void hilo_map_job(t_map_dest* map_dest) {
 	t_buffer* result_map_buff;
 	char *ip_nodo = from_int_to_inet_addr(map_dest->ip_nodo);
 
+
 	log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %s, Port: %i, Block: %i Temp: %s",
 			map_dest->id_map, map_dest->id_nodo, ip_nodo, map_dest->puerto_nodo, map_dest->block,
 			map_dest->temp_file_name);
@@ -162,7 +182,15 @@ void hilo_map_job(t_map_dest* map_dest) {
 	int socket_nodo = solicitarConexionConNodo(ip_nodo, map_dest->puerto_nodo, map_dest->id_nodo);
 
 	if(socket_nodo != -1) {
+
 		//XXX Realización del Map aquí
+		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
+			log_error(paranoid_log, "no se pudo enviar el info job");
+		}
+		else {
+			log_info(paranoid_log, "Se envio correctamente info job");
+		}
+
 	}
 
 	pthread_mutex_lock(&conex_marta_ready);
@@ -184,13 +212,57 @@ void hilo_map_job(t_map_dest* map_dest) {
 }
 
 //---------------------------------------------------------------------------
+int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
+	int result = 1;
+	t_buffer* map_to_Nodo_buff;
+    char *map_script = conf->path_map;
+    char *path_result_map = conf->path_result_file;
+    char* path_map = conf->paths_to_apply_files;
+	map_to_Nodo_buff = buffer_create_with_protocol(ORDER_MAP);
+
+	buffer_add_int(map_to_Nodo_buff, map_dest->ip_nodo);
+	buffer_add_int(map_to_Nodo_buff, map_dest->id_nodo);
+	buffer_add_int(map_to_Nodo_buff, map_dest->block);
+	buffer_add_string(map_to_Nodo_buff, map_dest->temp_file_name);
+	buffer_add_string(map_to_Nodo_buff, map_script);
+	buffer_add_string(map_to_Nodo_buff, path_map);
+	buffer_add_string(map_to_Nodo_buff, path_result_map);
+
+	send_buffer_and_destroy(socket_job, map_to_Nodo_buff);
+
+	return result;
+}
+
+//--------------------------------------------------------------------------
+void hilo_reduce_job(t_reduce_dest* reduce_dest){
+
+}
+
+//--------------------------------------------------------------------------
+void esperar_hilo_reduce(t_hilo_reduce* hilo_reduce) {
+
+	void* ret_recep;
+
+	if (pthread_join(*(hilo_reduce->thr), &ret_recep) != 0) {
+		log_error(paranoid_log,"Error al hacer join del hilo Map ID: %i\n",hilo_reduce->id_reduce);
+	}
+}
+
+//--------------------------------------------------------------------------
+int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest){
+	return 0;
+}
+
+//---------------------------------------------------------------------------
 void esperar_instrucciones_de_MaRTA() {
 
 	uint32_t prot;
 	int finished = 0, error = 0;
 	t_hilo_map* hilo_map;
 	t_map_dest* map_dest;
+	t_reduce_dest* reduce_dest;
 	t_list* hilos_map = list_create();
+	//char *pathMapFile = conf->path_map;
 
 	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
@@ -221,7 +293,7 @@ void esperar_instrucciones_de_MaRTA() {
 
 			list_add(hilos_map,hilo_map);
 
-			log_info(paranoid_log, "Creación de Hilo Job");
+			log_info(paranoid_log, "Creación de Hilo de Map - Job");
 			if (pthread_create(hilo_map->thr, NULL, (void *) hilo_map_job, map_dest) != 0) {
 				log_error(paranoid_log, "No se pudo crear Hilo de Map ID: %i",hilo_map->id_map);
 				exit(-1);
@@ -229,6 +301,11 @@ void esperar_instrucciones_de_MaRTA() {
 			break;
 
 		case ORDER_REDUCE:
+
+			//abrir hilo de reduce
+			reduce_dest = malloc(sizeof(t_reduce_dest));
+			//Falta desarrollar instrucciones de reduce.
+
 			//XXX abrir hilo de reduce
 			result = (result > 0)? receive_int_in_order(socket_marta, &id_reduce) : result;
 			result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path_temp_result) : result;
@@ -274,6 +351,7 @@ void esperar_instrucciones_de_MaRTA() {
 					free(path);
 				}
 			}
+//>>>>>>> branch 'master' of https://github.com/sisoputnfrba/tp-2015-1c-karlos
 
 			break;
 
@@ -318,6 +396,7 @@ int enviar_nuevo_job_a_MaRTA(info_new_job info_job) {
 
 	new_job_buff = buffer_create_with_protocol(NUEVO_JOB);
 
+
 	buffer_add_int(new_job_buff, info_job.combiner);
 	buffer_add_string(new_job_buff, info_job.paths_to_apply_files);
 	buffer_add_string(new_job_buff, info_job.path_result_file);
@@ -333,7 +412,7 @@ int enviar_nuevo_job_a_MaRTA(info_new_job info_job) {
 }
 
 //---------------------------------------------------------------------------
-void levantar_arch_conf_job(conf_job* conf) {
+void levantar_arch_conf_job() {
 
 	char** properties = string_split("IP_MARTA,PUERTO_MARTA,MAPPER,REDUCE,COMBINER,ARCHIVOS,RESULTADO", ",");
 	t_config* conf_arch = config_create("job.cfg");
@@ -417,6 +496,8 @@ void init_var_globales() {
 
 	pthread_mutex_init(&conex_marta_ready, NULL);
 
+	conf_job* conf;
+
 	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 }
 
@@ -434,19 +515,19 @@ int main(void) {
 
 	init_var_globales();
 
-	conf_job conf; // estructura que contiene la info del arch de conf
-	levantar_arch_conf_job(&conf);
+	//conf_job conf; // estructura que contiene la info del arch de conf
+	levantar_arch_conf_job();
 
-	socket_marta = solicitarConexionConMarta(conf);
+	socket_marta = solicitarConexionConMarta();
 
 	info_new_job new_job;
-	set_new_job(conf, &new_job);
+	set_new_job(&new_job);
 
 	enviar_nuevo_job_a_MaRTA(new_job);
 
 	esperar_instrucciones_de_MaRTA();
 
-	free_conf_job(&conf);
+	free_conf_job();
 	free_info_job(&new_job);
 
 	end_var_globales();

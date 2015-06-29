@@ -195,6 +195,10 @@ void esperar_instrucciones_de_MaRTA() {
 	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
 	while ((!finished) && (!error)) {
+		uint32_t id_reduce;
+		char* path_temp_result;
+		uint32_t nodes_amount = 0;
+		int result = 1;
 
 		prot = receive_protocol_in_order(socket_marta);
 
@@ -225,7 +229,52 @@ void esperar_instrucciones_de_MaRTA() {
 			break;
 
 		case ORDER_REDUCE:
-			//abrir hilo de reduce
+			//XXX abrir hilo de reduce
+			result = (result > 0)? receive_int_in_order(socket_marta, &id_reduce) : result;
+			result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path_temp_result) : result;
+			result = (result > 0)? receive_int_in_order(socket_marta, &nodes_amount) : result;
+
+			if(result > 0) {
+				log_info(paranoid_log, "Realizando Operación de Reduce ID: %i, Result: %s, Cantidad Nodos: %i", id_reduce,
+						path_temp_result, nodes_amount);
+			}
+			int i,j;
+			free(path_temp_result);
+
+			for(i=0; (i<nodes_amount) && (result > 0); i++) {
+
+				uint32_t id_nodo;
+				uint32_t ip_nodo;
+				uint32_t puerto_nodo;
+				uint32_t amount_files_in_node = 0;
+
+				result = (result > 0)? receive_int_in_order(socket_marta, &id_nodo) : result;
+				result = (result > 0)? receive_int_in_order(socket_marta, &ip_nodo) : result;
+				result = (result > 0)? receive_int_in_order(socket_marta, &puerto_nodo) : result;
+				result = (result > 0)? receive_int_in_order(socket_marta, &amount_files_in_node) : result;
+
+				if(result > 0) {
+					char* ip = from_int_to_inet_addr(ip_nodo);
+
+					log_info(paranoid_log, "Nodo: ID: %i, IP: %s, Puerto: %i, Cantidad Temporales: %i", id_nodo, ip, puerto_nodo,
+							amount_files_in_node);
+					free(ip);
+				}
+
+				for(j=0; (j< amount_files_in_node)  && (result > 0); j++) {
+					uint32_t id_temp;
+					char* path;
+
+					result = (result > 0)? receive_int_in_order(socket_marta, &id_temp) : result;
+					result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path) : result;
+
+					if(result > 0) {
+						log_info(paranoid_log, "Temp ID: %i, Path: %s", id_temp,path);
+					}
+					free(path);
+				}
+			}
+
 			break;
 
 		case FINISHED_JOB:

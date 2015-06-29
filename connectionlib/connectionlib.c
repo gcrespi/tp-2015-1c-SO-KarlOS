@@ -71,6 +71,20 @@ void buffer_add_int(t_buffer* self, uint32_t int_to_add) {
 }
 
 //---------------------------------------------------------------------------
+void buffer_add_buffer_and_destroy_added(t_buffer* self, t_buffer* added) {
+
+	off_t offset_to_write = self->size;
+
+	self->size += added->size;
+	self->buffer = realloc(self->buffer, self->size);
+
+	memcpy((self->buffer + offset_to_write), added->buffer, added->size);
+
+	buffer_destroy(added);
+}
+
+
+//---------------------------------------------------------------------------
 void buffer_destroy(t_buffer* self) {
 	free(self->buffer);
 	free(self);

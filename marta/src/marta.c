@@ -51,28 +51,26 @@ typedef struct {
 typedef struct {
 	uint32_t id_temp;
 	char* path;
-	uint32_t id_nodo;
 	char* path_file_origin;
 	uint32_t block_origin;
-//ip_nodo y puerto_nodo?
-//	char result_from_map; //= 1 es el resultado de un map, es el resultado de un reduce
-//	int id_origen; //id del bloque del cual resulto o ids de los temp del que resulto
 } t_temp_map;
+
+typedef struct {
+	uint32_t id_nodo;
+	t_list* temps_map;
+	//XXX falta temp total del nodo
+} t_temp_nodo;
 
 //************************* Estructura Por cada Map ************************
 
 typedef struct {
 	uint32_t id_nodo;
-	uint32_t ip_nodo;
-	uint32_t puerto_nodo;
 	uint32_t block;
 } t_block_copy;
 
 typedef struct {
 	uint32_t id_map;
 	uint32_t id_nodo;
-	uint32_t ip_nodo;
-	uint32_t puerto_nodo;
 	uint32_t block;
 	char* temp_file_name;
 } t_map_dest;
@@ -88,10 +86,18 @@ typedef struct {
 	uint32_t id_map;
 } t_result_map;
 
+typedef struct {
+	uint32_t prot;
+	uint32_t id_reduce;
+} t_result_reduce;
+
+
 //************************* Estructura de Carga de los Nodos (GLOBAL) ************************
 typedef struct {
 	uint32_t id_nodo;
 	uint32_t cant_ops_en_curso;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
 } t_carga_nodo;
 
 //########################################  Prototipos  #########################################
@@ -105,6 +111,7 @@ void free_hilo_job(t_hilo_job* job);
 void free_info_job(t_info_job info_job);
 void free_info_file(t_info_file* self);
 void free_temp_map(t_temp_map* self);
+void free_temp_nodo(t_temp_nodo* self);
 
 void free_map_dest(t_map_dest* self);
 void free_pending_map(t_pending_map* self);
@@ -112,7 +119,7 @@ void free_pending_map(t_pending_map* self);
 void free_carga_nodo(t_carga_nodo* self);
 
 void mostrar_info_file(t_info_file* self);
-void mostrar_map_dest(t_map_dest* md);
+void show_map_dest_and_nodo_location(t_map_dest* md, uint32_t ip_nodo, uint32_t puerto_nodo);
 
 //************************************* Interaccion Job **************************************
 
@@ -128,7 +135,7 @@ int send_aborted_job(int socket_job);
 //************************************* Interaccion FS **************************************
 int receive_info_file(int socket, t_info_file* info_file);
 int solicitar_info_de_archivo(t_info_file* info_file);
-int locate_block_in_FS(t_info_job info_job, char* path_file, uint32_t block_number, t_list* block_copies);
+int locate_block_in_FS(char* path_file, uint32_t block_number, t_list* block_copies);
 int obtenerAceptacionDeFS(int socket);
 
 //***************************************** Principal *******************************************
@@ -139,10 +146,10 @@ int increment_and_take_last_job_id();
 
 int get_info_files_from_FS(char **paths_files, t_list* file_list);
 
-t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list);
+t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps);
 
-int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int sockjob);
-int plan_reduces();
+int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob);
+int plan_reduces(t_info_job info_job, t_list* temp_map_list, int sockjob);
 int save_result_file_in_MDFS();
 
 void hilo_conex_job(t_hilo_job *job);
@@ -210,18 +217,26 @@ void free_temp_map(t_temp_map* self) {
 }
 
 //---------------------------------------------------------------------------
+void free_temp_nodo(t_temp_nodo* self) {
+
+	list_destroy_and_destroy_elements(self->temps_map,(void *) free_temp_map);
+	free(self);
+}
+
+
+//---------------------------------------------------------------------------
 void mostrar_info_file(t_info_file* self) {
 
 	log_debug(paranoid_log, "Archivo: %s Cantidad Bloques: %i", self->path, self->amount_blocks);
 }
 
 //---------------------------------------------------------------------------
-void mostrar_map_dest(t_map_dest* md) {
+void show_map_dest_and_nodo_location(t_map_dest* md, uint32_t ip_nodo, uint32_t puerto_nodo) {
 
-	char *ip = from_int_to_inet_addr(md->ip_nodo);
+	char *ip = from_int_to_inet_addr(ip_nodo);
 
 	log_debug(paranoid_log, "Map ID: %i, Nodo: ID: %i, IP: %s, Port: %i, Block: %i Temp:%s", md->id_map, md->id_nodo, ip,
-			md->puerto_nodo, md->block, md->temp_file_name);
+			puerto_nodo, md->block, md->temp_file_name);
 
 	free(ip);
 }
@@ -332,18 +347,101 @@ int receive_info_job(t_hilo_job* job, t_info_job* info_job) {
 }
 
 //---------------------------------------------------------------------------
+int locate_nodo(uint32_t id_nodo, uint32_t *ip_nodo, uint32_t *puerto_nodo) {
+
+	int result = 1,found;
+
+	int _isNodeSearched(t_carga_nodo* carga_nodo) {
+		return carga_nodo->id_nodo == id_nodo;
+	}
+
+	pthread_mutex_lock(&node_list_mutex);
+
+	t_carga_nodo* carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+
+	if ((found = (carga_nodo != NULL))) {
+		*ip_nodo = carga_nodo->ip_nodo;
+		*puerto_nodo = carga_nodo->puerto_nodo;
+	}
+	pthread_mutex_unlock(&node_list_mutex);
+
+	if(found)
+		return 1;
+
+//	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo); XXX Implementar en el FS
+
+	*ip_nodo = inet_addr("127.0.0.1");
+	*puerto_nodo = 3500 + id_nodo;
+
+	if(result > 0) {
+		pthread_mutex_lock(&node_list_mutex);
+
+		carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+
+		if (carga_nodo != NULL) {
+			*ip_nodo = carga_nodo->ip_nodo;
+			*ip_nodo = carga_nodo->puerto_nodo;
+		} else {
+			carga_nodo = malloc(sizeof(t_carga_nodo));
+			carga_nodo->id_nodo = id_nodo;
+			carga_nodo->cant_ops_en_curso = 0;
+			carga_nodo->ip_nodo = (*ip_nodo);
+			carga_nodo->puerto_nodo = (*puerto_nodo);
+
+			list_add(carga_nodos, carga_nodo);
+		}
+		pthread_mutex_unlock(&node_list_mutex);
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int update_nodo_location(uint32_t id_nodo) {
+
+	int result = 1;
+
+	int _isNodeSearched(t_carga_nodo* carga_nodo) {
+		return carga_nodo->id_nodo == id_nodo;
+	}
+
+//	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo); XXX Implementar en el FS
+
+	uint32_t ip_nodo = inet_addr("127.0.0.1");
+	uint32_t puerto_nodo = 3500 + id_nodo;
+
+	if(result > 0) {
+		pthread_mutex_lock(&node_list_mutex);
+
+		t_carga_nodo* carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+
+		if (carga_nodo != NULL) {
+			carga_nodo->ip_nodo = ip_nodo;
+			carga_nodo->puerto_nodo = puerto_nodo;
+		}
+		pthread_mutex_unlock(&node_list_mutex);
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
 int order_map_to_job(t_map_dest* map_dest, int socket) {
 
 	int result;
 
-	mostrar_map_dest(map_dest);
+	uint32_t ip_nodo, puerto_nodo;
+
+	result = locate_nodo(map_dest->id_nodo, &ip_nodo, &puerto_nodo);
+
+	show_map_dest_and_nodo_location(map_dest, ip_nodo, puerto_nodo);
 
 	t_buffer* map_order = buffer_create_with_protocol(ORDER_MAP);
 
 	buffer_add_int(map_order, map_dest->id_map);
 	buffer_add_int(map_order, map_dest->id_nodo);
-	buffer_add_int(map_order, map_dest->ip_nodo);
-	buffer_add_int(map_order, map_dest->puerto_nodo);
+	buffer_add_int(map_order, ip_nodo);
+	buffer_add_int(map_order, puerto_nodo);
 	buffer_add_int(map_order, map_dest->block);
 	buffer_add_string(map_order, map_dest->temp_file_name);
 
@@ -511,9 +609,11 @@ int receive_block_location(int socket, t_list* block_copies, char* path_file, ui
 	for (i = 0; (i < amount_copies) && (result > 0); i++) {
 		block_copy = malloc(sizeof(t_map_dest));
 
+		uint32_t ip,puerto;
+
 		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->id_nodo)) : result;
-		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->ip_nodo)) : result;
-		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->puerto_nodo)) : result;
+		result = (result > 0) ? receive_int_in_order(socket, &ip) : result; // XXX sacar del FS
+		result = (result > 0) ? receive_int_in_order(socket, &puerto) : result; // XXX sacar del FS
 		result = (result > 0) ? receive_int_in_order(socket, &(block_copy->block)) : result;
 
 		if (result > 0) {
@@ -527,16 +627,69 @@ int receive_block_location(int socket, t_list* block_copies, char* path_file, ui
 }
 
 //---------------------------------------------------------------------------
-int locate_block_in_FS(t_info_job info_job, char* path_file, uint32_t block_number, t_list* block_copies) {
+int locate_block_in_FS(char* path_file, uint32_t block_number, t_list* block_copies) {
 
 	t_buffer* block_request = buffer_create_with_protocol(BLOCK_LOCATION_REQUEST);
 	buffer_add_string(block_request, path_file);
 	buffer_add_int(block_request, block_number);
 
 	pthread_mutex_lock(&conex_fs_ready);
-	send_buffer_and_destroy(socket_fs, block_request);
+	int result = send_buffer_and_destroy(socket_fs, block_request);
 
-	int result = receive_block_location(socket_fs, block_copies, path_file, block_number);
+	result = (result > 0) ? receive_block_location(socket_fs, block_copies, path_file, block_number) : result;
+	pthread_mutex_unlock(&conex_fs_ready);
+
+	return result;
+}
+
+
+//---------------------------------------------------------------------------
+int receive_nodo_location(int socket, uint32_t id_nodo, uint32_t *ip_nodo, uint32_t *puerto_nodo) {
+
+	int prot;
+
+	prot = receive_protocol_in_order(socket);
+
+	switch (prot) {
+
+	case NODO_LOCATION:
+		log_debug(paranoid_log, "Obteniendo Ubicación del nodo ID: %i", id_nodo);
+		break;
+
+	case LOST_NODO:
+		log_debug(paranoid_log, "El nodo ID: %i no se encuentra en el MDFS", id_nodo);
+		return -2;
+		break;
+
+	case DISCONNECTED:
+		log_error(paranoid_log, "FS se Desconectó de forma inesperada");
+		return 0;
+		break;
+
+	case -1:
+		return -1;
+		break;
+
+	default:
+		log_error(paranoid_log, "Protocolo Inesperado %i (MaRTA PANIC!)", prot);
+		break;
+	}
+
+	int result = receive_int_in_order(socket, ip_nodo);
+	result = (result > 0) ? receive_int_in_order(socket, puerto_nodo) : result;
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int locate_nodo_in_FS(uint32_t id_nodo,uint32_t *ip_nodo,uint32_t *puerto_nodo) {
+	t_buffer* nodo_request = buffer_create_with_protocol(NODO_LOCATION_REQUEST);
+	buffer_add_int(nodo_request, id_nodo);
+
+	pthread_mutex_lock(&conex_fs_ready);
+	int result = send_buffer_and_destroy(socket_fs, nodo_request);
+
+	result = (result > 0) ? receive_nodo_location(socket_fs, id_nodo, ip_nodo, puerto_nodo) : result;
 	pthread_mutex_unlock(&conex_fs_ready);
 
 	return result;
@@ -589,11 +742,38 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list) {
 	return result;
 }
 
+
 //---------------------------------------------------------------------------
-int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temp_map_list) {
+uint32_t count_map_temps_in_node(t_list* temps_nodo, uint32_t id_nodo) {
+
+	int _isSearchedTempNodo(t_temp_nodo* temp_nodo) {
+		return temp_nodo->id_nodo == id_nodo;
+	}
+
+	t_temp_nodo* temp_nodo = list_find(temps_nodo, (void *) _isSearchedTempNodo);
+
+	if(temp_nodo == NULL)
+		return 0;
+
+	return list_size(temp_nodo->temps_map);
+}
+
+//---------------------------------------------------------------------------
+uint32_t count_pending_maps_in_node(t_list* pending_maps, uint32_t id_nodo) {
+
+	int _pendingMapHasTheSameIdNodo(t_pending_map* pending_map) {
+		return pending_map->map_dest->id_nodo == id_nodo;
+	}
+
+	return list_count_satisfying(pending_maps, (void *) _pendingMapHasTheSameIdNodo);
+}
+
+//---------------------------------------------------------------------------
+int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo, t_list* pending_maps) {
 
 	t_carga_nodo* carga_nodo;
 	uint32_t carga;
+	uint32_t cant_mismo_nodo;
 
 	int _isNodeSearched(t_carga_nodo* carga_nodo) {
 		return carga_nodo->id_nodo == block_copy->id_nodo;
@@ -611,12 +791,13 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temp_map_li
 
 	int score = 100 - carga; //XXX revisar numero arbitrario, es la cuenta que quiero??
 
-	int _isTempMapSearched(t_temp_map* temp_map) {
-		return temp_map->id_nodo == block_copy->id_nodo;
-	}
-
 	if(combiner) {
-		score += list_count_satisfying(temp_map_list,(void*) _isTempMapSearched);
+		cant_mismo_nodo = 0;
+
+		cant_mismo_nodo += count_map_temps_in_node(temps_nodo, block_copy->id_nodo);
+//		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);XXX
+
+		score += cant_mismo_nodo;
 	}
 
 	return score;
@@ -624,7 +805,7 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temp_map_li
 
 
 //---------------------------------------------------------------------------
-t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temp_list) {
+t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps) {
 
 	log_info(paranoid_log, "Planificando map del Archivo:%s Bloque: %i ", path_file, block_number);
 
@@ -633,7 +814,7 @@ t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_
 
 	t_list* block_copies = list_create();
 
-	if (locate_block_in_FS(info_job, path_file, block_number, block_copies) <= 0) {
+	if (locate_block_in_FS(path_file, block_number, block_copies) <= 0) {
 		log_error(paranoid_log, "No se pudieron localizar las copias del Archivo: %s, Bloque: %i", path_file, block_number);
 		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
 		return NULL;
@@ -642,7 +823,7 @@ t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_
 	//TODO TESTME Planificador
 
 	int _score_block_copy(t_block_copy* block_copy) {
-		return score_block_copy(block_copy, info_job.combiner, temp_list);
+		return score_block_copy(block_copy, info_job.combiner, temps_nodo, pending_maps);
 	}
 
 	t_block_copy* _best_copy_option(t_block_copy* block_copy1, t_block_copy* block_copy2) {
@@ -656,8 +837,6 @@ t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_
 		self = malloc(sizeof(t_map_dest));
 		self->id_map = ++(*last_id_map);
 		self->id_nodo = selected_copy->id_nodo;
-		self->ip_nodo = selected_copy->ip_nodo;
-		self->puerto_nodo = selected_copy->puerto_nodo;
 		self->block = selected_copy->block;
 		self->temp_file_name = string_from_format("map_%i_%i.temp", info_job.id_job, self->block);
 	} else {
@@ -727,11 +906,7 @@ void add_pending_map(t_list* pending_maps, t_info_file* file_info, uint32_t bloc
 	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
 
 	if (carga_nodo == NULL) {
-		carga_nodo = malloc(sizeof(t_carga_nodo));
-		carga_nodo->id_nodo = map_dest->id_nodo;
-		carga_nodo->cant_ops_en_curso = 1;
-
-		list_add(carga_nodos, carga_nodo);
+		log_error(paranoid_log,"No Existe el Nodo cargado en lista cuando debería!!! (Intentando incrementar cant ops en curso)");
 	} else {
 		(carga_nodo->cant_ops_en_curso)++;
 	}
@@ -741,7 +916,7 @@ void add_pending_map(t_list* pending_maps, t_info_file* file_info, uint32_t bloc
 }
 
 //---------------------------------------------------------------------------
-void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temp_list, uint32_t* last_id_temp) {
+void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nodo, uint32_t* last_id_temp) {
 
 	int _isSearchedPendingMap(t_pending_map* pending_map) {
 		return pending_map->map_dest->id_map == id_map;
@@ -754,22 +929,35 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temp_list
 		return carga_nodo->id_nodo == pending_map->map_dest->id_nodo;
 	}
 
+	int _isSearchedTempNodo(t_temp_nodo* temp_nodo) {
+		return temp_nodo->id_nodo == pending_map->map_dest->id_nodo;
+	}
+
+	t_temp_nodo* temp_nodo = list_find(temps_nodo, (void *) _isSearchedTempNodo);
+
+	if(temp_nodo == NULL) {
+		temp_nodo = malloc(sizeof(t_temp_nodo));
+		temp_nodo->id_nodo = pending_map->map_dest->id_nodo;
+		temp_nodo->temps_map = list_create();
+		list_add(temps_nodo, temp_nodo);
+	}
+
+
 	t_temp_map* temp_map = malloc(sizeof(t_temp_map));
 
 	temp_map->id_temp = ++(*last_id_temp);
 	temp_map->path = strdup(pending_map->map_dest->temp_file_name);
-	temp_map->id_nodo = pending_map->map_dest->id_nodo;
 	temp_map->path_file_origin = strdup(pending_map->file->path);
 	temp_map->block_origin = pending_map->block;
 
-	list_add(temp_list, temp_map);
+	list_add(temp_nodo->temps_map, temp_map);
 
 	pthread_mutex_lock(&node_list_mutex);
 
 	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
 
 	if (carga_nodo == NULL) {
-		log_error(paranoid_log, "Nodo no está en la lista de cargas cuando debería!");
+		log_error(paranoid_log, "No Existe el Nodo cargado en lista cuando debería!!! (Intentando decrementar cant ops en curso)");
 	} else {
 		(carga_nodo->cant_ops_en_curso)--;
 	}
@@ -780,7 +968,7 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temp_list
 }
 
 //---------------------------------------------------------------------------
-int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int sockjob) {
+int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob) {
 
 	t_list* pending_maps = list_create();
 	t_pending_map* pending_map;
@@ -796,7 +984,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 
 		for (j = 0; j < file_info->amount_blocks; j++) {
 
-			map_dest = planificar_map(info_job, file_info->path, j, &last_id_map, temp_list);
+			map_dest = planificar_map(info_job, file_info->path, j, &last_id_map, temps_nodo, pending_maps);
 			result = (map_dest != NULL) ? order_map_to_job(map_dest, sockjob) : -2;
 
 			if (result > 0) {
@@ -825,16 +1013,21 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 			switch (result_map.prot) {
 
 			case MAP_OK:
-				remove_pending_map(pending_maps, result_map.id_map, temp_list, &last_id_temp);
+				remove_pending_map(pending_maps, result_map.id_map, temps_nodo, &last_id_temp);
 				break;
 
 			case NODO_NOT_FOUND:
 				pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
 
-				free_map_dest(pending_map->map_dest);
-				pending_map->map_dest = planificar_map(info_job, pending_map->file->path, pending_map->block, &last_id_map, temp_list);
+				result = update_nodo_location(pending_map->map_dest->id_nodo);
 
-				result = (pending_map->map_dest != NULL) ? order_map_to_job(pending_map->map_dest, sockjob) : -2;
+				if(result > 0) {
+
+					free_map_dest(pending_map->map_dest);
+					pending_map->map_dest = planificar_map(info_job, pending_map->file->path, pending_map->block, &last_id_map, temps_nodo, pending_maps);
+
+					result = (pending_map->map_dest != NULL) ? order_map_to_job(pending_map->map_dest, sockjob) : -2;
+				}
 
 				if (result <= 0) {
 					list_destroy_and_destroy_elements(pending_maps, (void *) free_pending_map);
@@ -853,8 +1046,116 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temp_list, int soc
 	return 1;
 }
 
+////---------------------------------------------------------------------------
+//int receive_result_reduce(int sockjob, t_result_reduce* result_reduce) {
+//
+//	result_reduce->prot = receive_protocol_in_order(sockjob);
+//
+//	switch (result_reduce->prot) {
+//	case REDUCE_OK:
+//		log_info(paranoid_log, "Map Realizado con Exito");
+//		break;
+//
+//	case NODO_NOT_FOUND:
+////		receive_int_in_order(sockjob, )
+//		log_warning(paranoid_log, "No se encontró el NODO donde mapear");
+//		break;
+//
+//	case TEMP_NOT_FOUND:
+//		log_warning(paranoid_log, "No se encontró el Archivo Temporal a Reducir ");
+//		break;
+//
+//	case DISCONNECTED:
+//		log_error(paranoid_log, "Job se Desconectó de forma inesperada");
+//		return 0;
+//		break;
+//
+//	case -1:
+//		log_error(paranoid_log, "No se pudo recibir el resultado del Map");
+//		return -1;
+//		break;
+//
+//	default:
+//		log_error(paranoid_log, "Protocolo Inesperado %i (MaRTA PANIC!)", result_reduce->prot);
+//		return -1;
+//		break;
+//	}
+//
+//	return receive_int_in_order(sockjob, &(result_reduce->id_reduce));
+//}
+
 //---------------------------------------------------------------------------
-int plan_reduces() {
+int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
+
+	void _buffer_add_temp_map(t_temp_map* temp_map) {
+		buffer_add_int(order_reduce_buff, temp_map->id_temp);
+		buffer_add_string(order_reduce_buff, temp_map->path);
+	}
+
+	uint32_t amount_files_in_node;
+	amount_files_in_node = list_size(temp_nodo->temps_map);
+
+	if(amount_files_in_node == 0) {
+		log_warning(paranoid_log,"No se puede Realizar Reduce de 0 Maps en Nodo: %i !",temp_nodo->id_nodo);
+	}
+
+	buffer_add_int(order_reduce_buff, temp_nodo->id_nodo);
+	uint32_t ip_nodo = 0, puerto_nodo = 0;
+
+	int result = locate_nodo(temp_nodo->id_nodo, &ip_nodo, &puerto_nodo);
+
+	if(result <= 0)
+		return result;
+
+	buffer_add_int(order_reduce_buff, ip_nodo);
+	buffer_add_int(order_reduce_buff, puerto_nodo);
+	buffer_add_int(order_reduce_buff,amount_files_in_node);
+
+	list_iterate(temp_nodo->temps_map, (void *) _buffer_add_temp_map);
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob) {
+
+	uint32_t last_id_reduce = 0;
+	int result = 1;
+
+//	t_list* pending_reduce = list_create();
+//	t_pending_reduce* pending_reduce;
+
+//	if(info_job.combiner) {
+//		//XXX Planear con Combiner
+//
+//		return 1;
+//	} else {
+		uint32_t nodes_amount = list_size(temps_nodo);
+		if(nodes_amount == 0) {
+			log_error(paranoid_log,"No se puede Realizar Reduce de 0 Nodos!!!");
+			return -1;
+		}
+
+		t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
+		buffer_add_int(order_reduce_buff,++(last_id_reduce));
+		buffer_add_string(order_reduce_buff,info_job.path_result);
+		buffer_add_int(order_reduce_buff, nodes_amount);
+
+		void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
+			result = (result > 0) ? buffer_add_temp_node(order_reduce_buff, temp_nodo) : result;
+		}
+		list_iterate(temps_nodo, (void *) _buffer_add_temp_node);
+
+		result =  (result > 0) ? send_buffer_and_destroy(sockjob,order_reduce_buff) : result;
+
+		if(result < 0) {
+			log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce al Job");
+			return -1;
+		}
+
+//		result = (result > 0)? receive_result_reduce() : result;
+//	}
+
 	return 1;
 }
 
@@ -869,7 +1170,7 @@ void hilo_conex_job(t_hilo_job *job) {
 	int port_job;
 	t_info_job info_job;
 	t_list* file_list = list_create();
-	t_list* temp_list = list_create();
+	t_list* temps_nodo = list_create();
 
 	int result = 1;
 
@@ -881,9 +1182,9 @@ void hilo_conex_job(t_hilo_job *job) {
 
 	result = (result > 0) ? receive_info_job(job, &info_job) : result;
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
-	result = (result > 0) ? plan_maps(info_job, file_list, temp_list, job->sockfd) : result;
-	result = (result > 0) ? plan_reduces() : result; //XXX
-	result = (result > 0) ? save_result_file_in_MDFS() : result; //XXX
+	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
+	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd) : result;
+	result = (result > 0) ? save_result_file_in_MDFS() : result; //XXX falta Desarrollar
 
 	if (result > 0) {
 		send_finished_job(job->sockfd);
@@ -896,7 +1197,7 @@ void hilo_conex_job(t_hilo_job *job) {
 	free(ip_job);
 	free_info_job(info_job);
 	list_destroy_and_destroy_elements(file_list, (void *) free_info_file);
-	list_destroy_and_destroy_elements(temp_list, (void *) free_temp_map);
+	list_destroy_and_destroy_elements(temps_nodo, (void *) free_temp_nodo);
 }
 
 //---------------------------------------------------------------------------
@@ -995,7 +1296,7 @@ int main(void) {
 			free_hilo_job(job);
 		}
 
-		if (hilos_de_job >= 3) { //XXX
+		if (hilos_de_job >= 3) { //XXX Provisorio
 			terminar_hilos();
 		}
 	}

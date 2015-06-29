@@ -26,17 +26,21 @@ enum protocolo {
 	FINISHED_JOB, ABORTED_JOB, WRITE_BLOCK, READ_BLOCK, MAP_OK, NODO_NOT_FOUND,
 	INFO_ARCHIVO_REQUEST, ARCHIVO_NO_DISPONIBLE, BLOCK_LOCATION_REQUEST, BLOCK_LOCATION,
 	LOST_BLOCK, READ_RESULT_JOB, MARTA_CONNECTION_REQUEST, MARTA_CONNECTION_ACCEPTED, MARTA_CONNECTION_REFUSED,
-	ARCHIVO_INEXISTENTE, EXECUTE_MAP, EXECUTE_REDUCE
+	ARCHIVO_INEXISTENTE, EXECUTE_MAP, EXECUTE_REDUCE, REDUCE_OK, TEMP_NOT_FOUND,
+	NODO_LOCATION_REQUEST, NODO_LOCATION, LOST_NODO
 };
 
 t_buffer* buffer_create();
 t_buffer* buffer_create_with_protocol(uint32_t protocolo);
 void buffer_add_string(t_buffer* self, char *string_to_add);
 void buffer_add_int(t_buffer* self, uint32_t int_to_add);
+void buffer_add_buffer_and_destroy_added(t_buffer* self, t_buffer* added);
+
 int send_protocol_in_order(int socket, uint32_t protocol);
 int send_int_in_order(int socket, uint32_t entero);
 int send_buffer_and_destroy(int socket, t_buffer* self);
 void buffer_destroy(t_buffer* self);
+
 
 int receive_dinamic_array_in_order(int socket, void** buffer);
 int receive_static_array_in_order(int socket, void *buffer);

@@ -458,7 +458,6 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 			if(result > 0) {
 				log_info(logger, "Solicitud de MaRTA de Localización de Archivo: %s Bloque: %i",path_file, block_number);
 				struct t_arch* file = get_arch_from_path(path_file);
-				free(path_file);
 
 				if(file !=NULL) {
 					if(estaDisponibleElArchivo(file)&&any_block_with_num(block_number,file->bloques)) {
@@ -475,6 +474,7 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 				}
 			}
 		}
+		free(path_file);
 
 		if(result < 0) {
 			log_error(logger, "No se pudo enviar a MaRTA Info de Bloque");
@@ -507,6 +507,43 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 		}
 		if(result < 0) {
 			log_error(logger, "No se pudo enviar a MaRTA Localización de Nodo");
+			return -1;
+		}
+
+		if(result == 0) {
+			log_warning(logger, "MaRTA se Desconectó");
+			FD_CLR(*martaSock, master);
+			*martaSock = -1;
+			return 1;
+		}
+		break;
+
+	case SAVE_RESULT_REQUEST:
+		result = receive_int_in_order(*martaSock, &id_nodo);
+		char* src_name;
+		char* path_result;
+		result = (result > 0) ? receive_dinamic_array_in_order(*martaSock,(void **) &src_name) : result;
+		result = (result > 0) ? receive_dinamic_array_in_order(*martaSock,(void **) &path_result) : result;
+
+		if(result > 0) {
+			//XXX Hacer Magia de guardar el resultado
+			result = 1; //XXX Dependerá de si puede realizar la operación o no
+
+
+			t_buffer* save_result_buff;
+			if(result > 0) {
+				save_result_buff = buffer_create_with_protocol(SAVE_OK);
+			} else {
+				save_result_buff = buffer_create_with_protocol(SAVE_ABORT);
+			}
+			result = send_buffer_and_destroy(*martaSock, save_result_buff);
+		}
+
+		free(src_name);
+		free(path_result);
+
+		if(result < 0) {
+			log_error(logger, "No se pudo guardar resultado de Job");
 			return -1;
 		}
 

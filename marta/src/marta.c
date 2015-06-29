@@ -1237,7 +1237,7 @@ void hilo_conex_job(t_hilo_job *job) {
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
 	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
 	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd, &id_nodo_of_final_result) : result;
-//	result = (result > 0) ? save_result_file_in_MDFS(info_job, id_nodo_of_final_result) : result; //XXX Implementar en FS
+	result = (result > 0) ? save_result_file_in_MDFS(info_job, id_nodo_of_final_result) : result;
 
 	if (result > 0) {
 		send_finished_job(job->sockfd);

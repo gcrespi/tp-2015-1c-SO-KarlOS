@@ -26,7 +26,7 @@
 
 #define BACKLOG 5
 
-
+//############################# Buffer Functions ##################################################
 //---------------------------------------------------------------------------
 t_buffer* buffer_create() {
 	t_buffer* self;
@@ -106,6 +106,9 @@ int send_buffer_and_destroy(int socket, t_buffer* self) {
 	return result;
 }
 
+
+
+//################################ Send and Receive High Level ####################################
 //---------------------------------------------------------------------------
 int send_protocol_in_order(int socket, uint32_t protocol) {
 	return send_int_in_order(socket,protocol);
@@ -118,75 +121,15 @@ int send_int_in_order(int socket, uint32_t entero) {
 }
 
 //---------------------------------------------------------------------------
-int receive_dinamic_array_in_order(int socket, void** buffer) {
-	uint32_t size_received = 0;
-	uint32_t receiving;
-
-	uint32_t size_buffer;
-
-	*buffer = malloc(sizeof(char)); //para que se tome en cuenta de que cada vez que esta funcion es llamada hace un malloc
-
-	if ((receiving = recv(socket, &size_buffer, sizeof(uint32_t), 0)) == -1) {
-		mostrar_error(-1, "Error reciving");
-		return -1;
-	}
-
-	if (receiving == 0) {
-		return 0;
-	}
-
-	size_buffer = ntohl(size_buffer);
-
-	free(*buffer);
-	*buffer = malloc(size_buffer);
-
-	while (size_received < size_buffer) {
-
-		if ((receiving = recv(socket, ((*buffer) + size_received), (size_buffer - size_received), 0)) == -1) {
-			mostrar_error(-1, "Error receiving");
-			return -1;
-		}
-
-		if (receiving == 0) {
-			return 0;
-		}
-
-		size_received += receiving;
-	}
-	return size_received;
-}
-
-//---------------------------------------------------------------------------
-int receive_static_array_in_order(int socket, void *buffer) {
-
-	void* aux_buffer;
-
-	int result = receive_dinamic_array_in_order(socket, &aux_buffer);
-
-	if (result > 0) {
-		memcpy(buffer, aux_buffer, result);
-	}
-
-	free(aux_buffer);
-	return result;
-}
-
-
-
-//---------------------------------------------------------------------------
-int receive_int_in_order(int socket, uint32_t *number) {
-
+int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer) {
 	int result;
 
-	if ((result = recv(socket, number, sizeof(uint32_t), 0)) == -1) {
-		mostrar_error(-1, "Error recieving");
-		return -1;
+	if((result = send_int_in_order(socket,size_buffer)) <= 0) {
+		return result;
 	}
-
-	*number = ntohl(*number);
-
-	return result;
+	return send_stream_without_size(socket,buffer,size_buffer);
 }
+
 
 //---------------------------------------------------------------------------
 uint32_t receive_protocol_in_order(int socket) {
@@ -203,13 +146,231 @@ uint32_t receive_protocol_in_order(int socket) {
 	return prot;
 }
 
+//---------------------------------------------------------------------------
+int receive_int_in_order(int socket, uint32_t *number) {
+
+	int result;
+
+	result = receive_stream_without_size(socket, number, sizeof(uint32_t));
+	*number = ntohl(*number);
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int receive_static_array_in_order(int socket, void *buffer) {
+	uint32_t result;
+	uint32_t size_buffer;
+	if((result = receive_int_in_order(socket, &size_buffer)) <= 0) {
+		return result;
+	}
+	return receive_stream_without_size(socket, buffer, size_buffer);
+}
+
+//---------------------------------------------------------------------------
+int receive_dinamic_array_in_order(int socket, void** buffer) {
+	uint32_t result;
+	uint32_t size_buffer;
+
+	*buffer = malloc(sizeof(char)); //para que se tome en cuenta de que cada vez que esta funcion es llamada hace un malloc
+	if((result = receive_int_in_order(socket, &size_buffer)) <= 0) {
+		return result;
+	}
+	free(*buffer);
+
+	*buffer = malloc(size_buffer);
+	return receive_stream_without_size(socket, * buffer, size_buffer);
+}
 
 
+//################################ Send and Receive Low Level #####################################
+
+//---------------------------------------------------------------------------
+int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer) {
+	uint32_t size_sended = 0;
+	uint32_t sending;
+
+	while (size_sended < size_buffer) {
+		if ((sending = send(socket, (buffer + size_sended), (size_buffer - size_sended), 0)) == -1) {
+			mostrar_error(-1, "Error sending");
+			return -1;
+		}
+		if (sending == 0) {
+			return 0;
+		}
+		size_sended += sending;
+	}
+	return size_sended;
+}
+
+//---------------------------------------------------------------------------
+int receive_stream_without_size(int socket, void* buffer, uint32_t size_buffer) {
+	uint32_t size_received = 0;
+	uint32_t receiving;
+
+	while (size_received < size_buffer) {
+		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
+			mostrar_error(-1, "Error receiving");
+			return -1;
+		}
+		if (receiving == 0) {
+			return 0;
+		}
+		size_received += receiving;
+	}
+	return size_received;
+}
+
+//########################### Write and Read Low Level ############################################
+
+//---------------------------------------------------------------------------
+int write_stream(int fd, void* buffer, uint32_t size_buffer) {
+	uint32_t size_written = 0;
+	uint32_t writing;
+
+	while (size_written < size_buffer) {
+		if ((writing = write(fd, (buffer + size_written), (size_buffer - size_written))) == -1) {
+			mostrar_error(-1, "Error Writing");
+			return -1;
+		}
+		if (writing == 0) {
+			return 0;
+		}
+		size_written += writing;
+	}
+	return size_written;
+}
+
+//---------------------------------------------------------------------------
+int read_stream(int fd, void* buffer, uint32_t size_buffer) {
+	uint32_t size_read = 0;
+	uint32_t reading;
+
+	while (size_read < size_buffer) {
+		if ((reading = read(fd, (buffer + size_read), (size_buffer - size_read))) == -1) {
+			mostrar_error(-1, "Error Writing");
+			return -1;
+		}
+		if (reading == 0) {
+			return 0;
+		}
+		size_read += reading;
+	}
+	return size_read;
+}
+
+//############################# Read & Send , Recieve & Write #####################################
+
+//---------------------------------------------------------------------------
+int send_from_file_by_parts(int socket, int fd, size_t max_part_length, uint32_t total_size) {
+
+	size_t readed = 0;
+	char* buffer;
+	int to_be_read;
+
+	int result = send_int_in_order(socket, total_size);
+	while((readed < total_size) && (result > 0)) {
+		if(total_size - readed < max_part_length) {
+			to_be_read = total_size - readed;
+		} else {
+			to_be_read = max_part_length;
+		}
+		buffer = malloc(to_be_read);
+		result = read_stream(fd, buffer, to_be_read);
+		result = (result > 0) ? send_stream_without_size(socket, buffer, to_be_read) : result;
+		free(buffer);
+		readed += result;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error sending from file");
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int receive_in_file_by_parts(int socket, int fd, size_t max_part_length) {
+
+	char* buffer;
+	uint32_t total_size;
+	int to_be_written;
+	size_t written = 0;
+
+	int result = receive_int_in_order(socket, &total_size);
+	while((written < total_size) && (result > 0)) {
+		if(total_size - written < max_part_length) {
+			to_be_written = total_size - written;
+		} else {
+			to_be_written = max_part_length;
+		}
+		buffer = malloc(to_be_written);
+		result = receive_stream_without_size(socket, buffer, to_be_written);
+		result =  (result > 0) ? write_stream(fd, buffer, to_be_written) : result;
+		free(buffer);
+		written += to_be_written;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error receiving in file");
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length) {
+
+	struct stat stat_file;
+	if( stat(src_path, &stat_file) == -1) {
+		mostrar_error(-1, "Error while stat");
+		return -1;
+	}
+
+	int result;
+	int file_descriptor = NULL;
+	file_descriptor = open(src_path, O_RDONLY);
+	if (file_descriptor != -1) {
+		result = send_from_file_by_parts(socket, file_descriptor, max_part_length, stat_file.st_size);
+		close(file_descriptor);
+	} else {
+		mostrar_error(-2, "Error opening file");
+		return -2;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error sending file");
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length) {
+
+	int result;
+	int file_descriptor = NULL;
+	file_descriptor = creat(dest_path, S_IRWXU);
+	if (file_descriptor != -1) {
+		result = receive_in_file_by_parts(socket, file_descriptor, max_part_length);
+		close(file_descriptor);
+	} else {
+		mostrar_error(-2, "Error creating file");
+		return -2;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error receiving file");
+	}
+
+	return result;
+}
+
+//############################### Connections and Directions ######################################
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {
 	perror(cause);
 //	quizas debería distinguirse error insalvable de error ignorable
-//	getchar();
 }
 
 //---------------------------------------------------------------------------
@@ -278,150 +439,6 @@ int aceptarCliente(int listener, struct sockaddr_in* direccionCliente) {
 }
 
 //---------------------------------------------------------------------------
-int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer) {
-
-	uint32_t size_sended = 0;
-	while (size_sended < size_buffer) {
-		uint32_t sending;
-
-		if ((sending = send(socket, (buffer + size_sended), (size_buffer - size_sended), 0)) == -1) {
-			mostrar_error(-1, "Error sending");
-			return -1;
-		}
-
-		size_sended += sending;
-	}
-
-	return size_sended;
-
-}
-
-//---------------------------------------------------------------------------
-int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer) {
-	int result;
-
-	if((result = send_int_in_order(socket,size_buffer)) <= 0) {
-		return result;
-	}
-	return send_stream_without_size(socket,buffer,size_buffer);
-}
-
-
-//---------------------------------------------------------------------------
-int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length) {
-
-	int result;
-	size_t readed = 0;
-
-	struct stat stat_file;
-	if( stat(src_path, &stat_file) == -1) {
-		mostrar_error(-1, "Error while stat");
-		return -1;
-	}
-
-	int file_descriptor = NULL;
-	char* buffer;
-	int to_be_read;
-
-	file_descriptor = open(src_path, O_RDONLY);
-
-	if (file_descriptor != -1) {
-		result = send_int_in_order(socket, stat_file.st_size);
-		while((readed < stat_file.st_size) && (result > 0)) {
-			if(stat_file.st_size - readed < max_part_length) {
-				to_be_read = stat_file.st_size - readed;
-			} else {
-				to_be_read = max_part_length;
-			}
-			buffer = malloc(to_be_read);
-
-			result = read(file_descriptor, buffer, to_be_read);
-
-			result = (result > 0) ? send_stream_without_size(socket, buffer, result) : result;
-
-			free(buffer);
-			readed += result;
-		}
-
-		close(file_descriptor);
-	} else {
-		return -2;
-	}
-
-	if(result <= 0) {
-		mostrar_error(result, "Error sending file");
-	}
-
-	return result;
-}
-
-
-//---------------------------------------------------------------------------
-int receive_stream_without_size(int socket, void* buffer, uint32_t size_buffer) {
-	uint32_t size_received = 0;
-	uint32_t receiving;
-
-	while (size_received < size_buffer) {
-
-		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
-			mostrar_error(-1, "Error receiving");
-			return -1;
-		}
-
-		if (receiving == 0) {
-			return 0;
-		}
-
-		size_received += receiving;
-	}
-	return size_received;
-}
-
-//---------------------------------------------------------------------------
-int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length) {
-
-	int result;
-	size_t written = 0;
-
-	int file_descriptor = NULL;
-	char* buffer;
-	uint32_t total_size;
-	int to_be_written;
-
-	file_descriptor = creat(dest_path, S_IRWXU);
-
-	if (file_descriptor != -1) {
-		result = receive_int_in_order(socket, &total_size);
-		while((written < total_size) && (result > 0)) {
-			if(total_size - written < max_part_length) {
-				to_be_written = total_size - written;
-			} else {
-				to_be_written = max_part_length;
-			}
-			buffer = malloc(to_be_written);
-
-			result = receive_stream_without_size(socket, buffer, to_be_written);
-
-			result =  (result > 0) ? write(file_descriptor, buffer, to_be_written) : result;
-
-			free(buffer);
-			written += result;
-		}
-
-		close(file_descriptor);
-	} else {
-		return -2;
-	}
-
-	if(result <= 0) {
-		mostrar_error(result, "Error receiving file");
-	}
-
-	return result;
-
-}
-
-//---------------------------------------------------------------------------
 char* get_IP() { //ojala sirva para algo jaja
 	struct ifaddrs *interface_addr;
 	struct sockaddr_in* sock_addr;
@@ -480,7 +497,8 @@ char* from_int_to_inet_addr(uint32_t ip_int) {
 	return ip;
 }
 
-//-------------------*********************** Deberian ir en otra lib *******************
+
+//############################### Should be in another library ####################################
 //---------------------------------------------------------------------------
 void free_string_splits(char** strings) {
 	char **aux = strings;

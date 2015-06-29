@@ -39,22 +39,33 @@ t_buffer* buffer_create_with_protocol(uint32_t protocolo);
 void buffer_add_string(t_buffer* self, char *string_to_add);
 void buffer_add_int(t_buffer* self, uint32_t int_to_add);
 void buffer_add_buffer_and_destroy_added(t_buffer* self, t_buffer* added);
-
-int send_protocol_in_order(int socket, uint32_t protocol);
-int send_int_in_order(int socket, uint32_t entero);
+//int send_buffer(int socket, t_buffer* self);
 int send_buffer_and_destroy(int socket, t_buffer* self);
 void buffer_destroy(t_buffer* self);
 
 
-int receive_dinamic_array_in_order(int socket, void** buffer);
-int receive_static_array_in_order(int socket, void *buffer);
-int receive_int_in_order(int socket, uint32_t *number);
+int send_protocol_in_order(int socket, uint32_t protocol);
+int send_int_in_order(int socket, uint32_t entero);
+int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer);
+
+
 uint32_t receive_protocol_in_order(int socket);
+int receive_int_in_order(int socket, uint32_t *number);
+int receive_static_array_in_order(int socket, void *buffer);
+int receive_dinamic_array_in_order(int socket, void** buffer);
 
 
 int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer);
-int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer);
+int receive_stream_without_size(int socket, void* buffer, uint32_t size_buffer);
 
+
+
+int write_stream(int fd, void* buffer, uint32_t size_buffer);
+int read_stream(int fd, void* buffer, uint32_t size_buffer);
+
+
+int send_from_file_by_parts(int socket, int fd, size_t max_part_length, uint32_t total_size);
+int receive_in_file_by_parts(int socket, int fd, size_t max_part_length);
 
 int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length);
 int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length);

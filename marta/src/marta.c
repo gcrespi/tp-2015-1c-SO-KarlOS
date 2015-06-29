@@ -92,13 +92,13 @@ typedef struct {
 } t_result_reduce;
 
 
-//************************* Estructura de Carga de los Nodos (GLOBAL) ************************
+//************************* Estructura de Info y Estado de los Nodos (GLOBAL) ************************
 typedef struct {
 	uint32_t id_nodo;
 	uint32_t cant_ops_en_curso;
 	uint32_t ip_nodo;
 	uint32_t puerto_nodo;
-} t_carga_nodo;
+} t_info_nodo;
 
 //########################################  Prototipos  #########################################
 
@@ -116,7 +116,7 @@ void free_temp_nodo(t_temp_nodo* self);
 void free_map_dest(t_map_dest* self);
 void free_pending_map(t_pending_map* self);
 
-void free_carga_nodo(t_carga_nodo* self);
+void free_info_nodo(t_info_nodo* self);
 
 void mostrar_info_file(t_info_file* self);
 void show_map_dest_and_nodo_location(t_map_dest* md, uint32_t ip_nodo, uint32_t puerto_nodo);
@@ -171,7 +171,7 @@ int socket_fs;
 t_log* paranoid_log;
 
 pthread_mutex_t node_list_mutex;
-t_list* carga_nodos;
+t_list* info_nodos;
 
 //######################################  Funciones  #######################################
 
@@ -259,7 +259,7 @@ void free_pending_map(t_pending_map* self) {
 }
 
 //---------------------------------------------------------------------------
-void free_carga_nodo(t_carga_nodo* self) {
+void free_info_nodo(t_info_nodo* self) {
 	free(self);
 }
 
@@ -351,17 +351,17 @@ int locate_nodo(uint32_t id_nodo, uint32_t *ip_nodo, uint32_t *puerto_nodo) {
 
 	int result = 1,found;
 
-	int _isNodeSearched(t_carga_nodo* carga_nodo) {
-		return carga_nodo->id_nodo == id_nodo;
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == id_nodo;
 	}
 
 	pthread_mutex_lock(&node_list_mutex);
 
-	t_carga_nodo* carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+	t_info_nodo* info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-	if ((found = (carga_nodo != NULL))) {
-		*ip_nodo = carga_nodo->ip_nodo;
-		*puerto_nodo = carga_nodo->puerto_nodo;
+	if ((found = (info_nodo != NULL))) {
+		*ip_nodo = info_nodo->ip_nodo;
+		*puerto_nodo = info_nodo->puerto_nodo;
 	}
 	pthread_mutex_unlock(&node_list_mutex);
 
@@ -376,19 +376,19 @@ int locate_nodo(uint32_t id_nodo, uint32_t *ip_nodo, uint32_t *puerto_nodo) {
 	if(result > 0) {
 		pthread_mutex_lock(&node_list_mutex);
 
-		carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+		info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-		if (carga_nodo != NULL) {
-			*ip_nodo = carga_nodo->ip_nodo;
-			*ip_nodo = carga_nodo->puerto_nodo;
+		if (info_nodo != NULL) {
+			*ip_nodo = info_nodo->ip_nodo;
+			*ip_nodo = info_nodo->puerto_nodo;
 		} else {
-			carga_nodo = malloc(sizeof(t_carga_nodo));
-			carga_nodo->id_nodo = id_nodo;
-			carga_nodo->cant_ops_en_curso = 0;
-			carga_nodo->ip_nodo = (*ip_nodo);
-			carga_nodo->puerto_nodo = (*puerto_nodo);
+			info_nodo = malloc(sizeof(t_info_nodo));
+			info_nodo->id_nodo = id_nodo;
+			info_nodo->cant_ops_en_curso = 0;
+			info_nodo->ip_nodo = (*ip_nodo);
+			info_nodo->puerto_nodo = (*puerto_nodo);
 
-			list_add(carga_nodos, carga_nodo);
+			list_add(info_nodos, info_nodo);
 		}
 		pthread_mutex_unlock(&node_list_mutex);
 	}
@@ -401,8 +401,8 @@ int update_nodo_location(uint32_t id_nodo) {
 
 	int result = 1;
 
-	int _isNodeSearched(t_carga_nodo* carga_nodo) {
-		return carga_nodo->id_nodo == id_nodo;
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == id_nodo;
 	}
 
 //	result = locate_nodo_in_FS(id_nodo, ip_nodo, puerto_nodo); XXX Implementar en el FS
@@ -413,11 +413,11 @@ int update_nodo_location(uint32_t id_nodo) {
 	if(result > 0) {
 		pthread_mutex_lock(&node_list_mutex);
 
-		t_carga_nodo* carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+		t_info_nodo* info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-		if (carga_nodo != NULL) {
-			carga_nodo->ip_nodo = ip_nodo;
-			carga_nodo->puerto_nodo = puerto_nodo;
+		if (info_nodo != NULL) {
+			info_nodo->ip_nodo = ip_nodo;
+			info_nodo->puerto_nodo = puerto_nodo;
 		}
 		pthread_mutex_unlock(&node_list_mutex);
 	}
@@ -771,21 +771,21 @@ uint32_t count_pending_maps_in_node(t_list* pending_maps, uint32_t id_nodo) {
 //---------------------------------------------------------------------------
 int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo, t_list* pending_maps) {
 
-	t_carga_nodo* carga_nodo;
+	t_info_nodo* info_nodo;
 	uint32_t carga;
 	uint32_t cant_mismo_nodo;
 
-	int _isNodeSearched(t_carga_nodo* carga_nodo) {
-		return carga_nodo->id_nodo == block_copy->id_nodo;
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == block_copy->id_nodo;
 	}
 
 	pthread_mutex_lock(&node_list_mutex);
-	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+	info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-	if (carga_nodo == NULL) {
+	if (info_nodo == NULL) {
 		carga = 0;
 	} else {
-		carga = carga_nodo->cant_ops_en_curso;
+		carga = info_nodo->cant_ops_en_curso;
 	}
 	pthread_mutex_unlock(&node_list_mutex);
 
@@ -888,7 +888,7 @@ void add_pending_map(t_list* pending_maps, t_info_file* file_info, uint32_t bloc
 
 	t_pending_map* pending_map;
 
-	t_carga_nodo* carga_nodo;
+	t_info_nodo* info_nodo;
 
 	pending_map = malloc(sizeof(t_pending_map));
 	pending_map->file = file_info;
@@ -897,18 +897,18 @@ void add_pending_map(t_list* pending_maps, t_info_file* file_info, uint32_t bloc
 
 	list_add(pending_maps, pending_map);
 
-	int _isNodeSearched(t_carga_nodo* carga_nodo) {
-		return carga_nodo->id_nodo == map_dest->id_nodo;
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == map_dest->id_nodo;
 	}
 
 	pthread_mutex_lock(&node_list_mutex);
 
-	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+	info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-	if (carga_nodo == NULL) {
+	if (info_nodo == NULL) {
 		log_error(paranoid_log,"No Existe el Nodo cargado en lista cuando debería!!! (Intentando incrementar cant ops en curso)");
 	} else {
-		(carga_nodo->cant_ops_en_curso)++;
+		(info_nodo->cant_ops_en_curso)++;
 	}
 
 	pthread_mutex_unlock(&node_list_mutex);
@@ -923,10 +923,10 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nod
 	}
 
 	t_pending_map* pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
-	t_carga_nodo* carga_nodo;
+	t_info_nodo* info_nodo;
 
-	int _isNodeSearched(t_carga_nodo* carga_nodo) {
-		return carga_nodo->id_nodo == pending_map->map_dest->id_nodo;
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == pending_map->map_dest->id_nodo;
 	}
 
 	int _isSearchedTempNodo(t_temp_nodo* temp_nodo) {
@@ -954,12 +954,12 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nod
 
 	pthread_mutex_lock(&node_list_mutex);
 
-	carga_nodo = list_find(carga_nodos, (void *) _isNodeSearched);
+	info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
 
-	if (carga_nodo == NULL) {
+	if (info_nodo == NULL) {
 		log_error(paranoid_log, "No Existe el Nodo cargado en lista cuando debería!!! (Intentando decrementar cant ops en curso)");
 	} else {
-		(carga_nodo->cant_ops_en_curso)--;
+		(info_nodo->cant_ops_en_curso)--;
 	}
 
 	pthread_mutex_unlock(&node_list_mutex);
@@ -1220,7 +1220,7 @@ void init_var_globales() {
 
 	paranoid_log = log_create("./logMaRTA.log", "MaRTA", 1, LOG_LEVEL_TRACE);
 
-	carga_nodos = list_create();
+	info_nodos = list_create();
 }
 
 //--------------------------------------------------------------------------
@@ -1234,7 +1234,7 @@ void end_var_globales() {
 
 	log_destroy(paranoid_log);
 
-	list_destroy_and_destroy_elements(carga_nodos,(void *)free_carga_nodo);
+	list_destroy_and_destroy_elements(info_nodos,(void *)free_info_nodo);
 }
 
 //###########################################################################

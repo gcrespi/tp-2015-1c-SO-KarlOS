@@ -553,14 +553,26 @@ int realizar_Map(int socket) {
 	//signal(SIGPIPE, sigpipe_f);
 	int result = 1;
     uint32_t nroBloque;
+    uint32_t id;
     char* map;
+    char* destino;
+    result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+	result = (result > 0) ? receive_int_in_order(socket, &id) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
-	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &destino) : result;
+
+	if (id == conf.id){
+
+	// aca tendria que ir una funcion que me convierta el array recibido del job en un
+		//archivo para despues aplicar el map
 
 	puts("Realizando Tarea de map\n");
-	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1","salida.txt", nroBloque);
-							//path de map a aplicar 	              donde guardar resultados
+	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
+                       	//path de map a aplicar 	              nombre result
+	} else puts("No soy yo");
+
 	free(map);
+	free(destino);
 	return result;
 }
 

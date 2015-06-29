@@ -27,7 +27,9 @@ enum protocolo {
 	INFO_ARCHIVO_REQUEST, ARCHIVO_NO_DISPONIBLE, BLOCK_LOCATION_REQUEST, BLOCK_LOCATION,
 	LOST_BLOCK, READ_RESULT_JOB, MARTA_CONNECTION_REQUEST, MARTA_CONNECTION_ACCEPTED, MARTA_CONNECTION_REFUSED,
 	ARCHIVO_INEXISTENTE, EXECUTE_MAP, EXECUTE_REDUCE, REDUCE_OK, TEMP_NOT_FOUND,
-	NODO_LOCATION_REQUEST, NODO_LOCATION, LOST_NODO
+	NODO_LOCATION_REQUEST, NODO_LOCATION, LOST_NODO, SAVE_RESULT_REQUEST,
+	SAVE_OK, SAVE_ABORT
+
 };
 
 t_buffer* buffer_create();
@@ -48,15 +50,15 @@ int receive_int_in_order(int socket, uint32_t *number);
 uint32_t receive_protocol_in_order(int socket);
 
 
-//uint32_t recibir_protocolo(int socket);
-//int enviar_protocolo(int socket, uint32_t protocolo);
-//int enviar_string(int socket, char *string);
-//int enviar_int(int socket, uint32_t numero);
 int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer);
 int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer);
-//int enviar(int socket, void *buffer, uint32_t size_buffer);
-//int recibir(int socket, void *buffer);
-//int recibir_dinamic_buffer(int socket, void** buffer);
+
+
+int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length);
+int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length);
+
+
+
 char* get_IP();
 
 int solicitarConexionCon(char* server_ip, int server_port);

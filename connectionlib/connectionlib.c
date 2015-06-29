@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -302,6 +304,117 @@ int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffe
 		return result;
 	}
 	return send_stream_without_size(socket,buffer,size_buffer);
+}
+
+
+//---------------------------------------------------------------------------
+int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length) {
+
+	int result;
+	size_t readed = 0;
+
+	struct stat stat_file;
+	stat(src_path, &stat_file);
+	int file_descriptor = NULL;
+	char* buffer;
+	int to_be_read;
+
+	file_descriptor = open(src_path, O_RDONLY);
+
+	if (file_descriptor != -1) {
+		result = send_int_in_order(socket, stat_file.st_size);
+		while((readed < stat_file.st_size) && (result > 0)) {
+			if(stat_file.st_size - readed < max_part_length) {
+				to_be_read = stat_file.st_size - readed;
+			} else {
+				to_be_read = max_part_length;
+			}
+			buffer = malloc(to_be_read);
+
+			result = read(file_descriptor, buffer, to_be_read);
+
+			result = (result > 0) ? send_stream_without_size(socket, buffer, result) : result;
+
+			free(buffer);
+			readed += result;
+		}
+
+		close(file_descriptor);
+	} else {
+		return -2;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error sending file");
+	}
+
+	return result;
+}
+
+
+//---------------------------------------------------------------------------
+int receive_stream_without_size(int socket, void* buffer, uint32_t size_buffer) {
+	uint32_t size_received = 0;
+	uint32_t receiving;
+
+	while (size_received < size_buffer) {
+
+		if ((receiving = recv(socket, (buffer + size_received), (size_buffer - size_received), 0)) == -1) {
+			mostrar_error(-1, "Error receiving");
+			return -1;
+		}
+
+		if (receiving == 0) {
+			return 0;
+		}
+
+		size_received += receiving;
+	}
+	return size_received;
+}
+
+//---------------------------------------------------------------------------
+int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length) {
+
+	int result;
+	size_t written = 0;
+
+	int file_descriptor = NULL;
+	char* buffer;
+	uint32_t total_size;
+	int to_be_written;
+
+	file_descriptor = creat(dest_path, S_IRWXU);
+
+	if (file_descriptor != -1) {
+		result = receive_int_in_order(socket, &total_size);
+		while((written < total_size) && (result > 0)) {
+			if(total_size - written < max_part_length) {
+				to_be_written = total_size - written;
+			} else {
+				to_be_written = max_part_length;
+			}
+			buffer = malloc(to_be_written);
+
+			result = receive_stream_without_size(socket, buffer, to_be_written);
+
+			result =  (result > 0) ? write(file_descriptor, buffer, to_be_written) : result;
+
+			free(buffer);
+			written += result;
+		}
+
+		close(file_descriptor);
+	} else {
+		return -2;
+	}
+
+	if(result <= 0) {
+		mostrar_error(result, "Error receiving file");
+	}
+
+	return result;
+
 }
 
 //---------------------------------------------------------------------------

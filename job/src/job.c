@@ -248,13 +248,14 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
 	int result = 1;
 
 	t_buffer* map_to_Nodo_buff;
+	char *pathMap = conf->path_map;
     char *path_result_map = conf->path_result_file;
     char* path_map = conf->paths_to_apply_files;
 	map_to_Nodo_buff = buffer_create_with_protocol(ORDER_MAP);
 
-	if(mapearArchivoDeMap()==1){
+	/*if(mapearArchivoDeMap()==1){
 		perror("error de mapeo de archivo");
-	}
+	}*/
 
 	buffer_add_int(map_to_Nodo_buff, map_dest->ip_nodo);
 	buffer_add_int(map_to_Nodo_buff, map_dest->id_nodo);
@@ -263,6 +264,8 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
 	buffer_add_string(map_to_Nodo_buff, codigoMap);
 	buffer_add_string(map_to_Nodo_buff, path_map);
 	buffer_add_string(map_to_Nodo_buff, path_result_map);
+
+	send_entire_file_by_parts(socket_job, pathMap, (4*1024));
 
 	send_buffer_and_destroy(socket_job, map_to_Nodo_buff);
 

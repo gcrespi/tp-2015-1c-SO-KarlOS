@@ -53,16 +53,15 @@ typedef struct {
 } t_info_file;
 
 typedef struct {
-	uint32_t id_temp;
-	char* path;
-	char* path_file_origin;
-	uint32_t block_origin;
-} t_temp_map;
+	uint32_t id_nodo;
+	uint32_t amount_maps;
+	t_list* orphan_temps;
+} t_temp_nodo;
 
 typedef struct {
-	uint32_t id_nodo;
-	t_list* temps_map;
-} t_temp_nodo;
+	char* path_file;
+	uint32_t block_number;
+} t_src_block;
 
 typedef struct {
 	char* path_temp;
@@ -129,11 +128,14 @@ void free_conf_marta(t_conf_MaRTA* conf);
 void free_hilo_job(t_hilo_job* job);
 void free_info_job(t_info_job info_job);
 void free_info_file(t_info_file* self);
-void free_temp_map(t_temp_map* self);
 void free_temp_nodo(t_temp_nodo* self);
+
+void free_temp(t_temp* self);
+
 
 void free_map_dest(t_map_dest* self);
 void free_pending_map(t_pending_map* self);
+void free_pending_reduce(t_pending_reduce* self);
 
 void free_info_nodo(t_info_nodo* self);
 
@@ -169,7 +171,6 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list);
 t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob);
-//int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
 int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
 int plan_unique_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
 int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result);
@@ -231,17 +232,26 @@ void free_info_file(t_info_file* self) {
 }
 
 //---------------------------------------------------------------------------
-void free_temp_map(t_temp_map* self) {
-	free(self->path);
-	free(self->path_file_origin);
-	free(self);
+void free_temp_nodo(t_temp_nodo* self) {
 
+	list_destroy_and_destroy_elements(self->orphan_temps,(void *) free_temp);
+	free(self);
 }
 
 //---------------------------------------------------------------------------
-void free_temp_nodo(t_temp_nodo* self) {
+void free_src_block(t_src_block* self) {
+	free(self->path_file);
+	free(self);
+}
 
-	list_destroy_and_destroy_elements(self->temps_map,(void *) free_temp_map);
+//---------------------------------------------------------------------------
+void free_temp(t_temp* self) {
+	free(self->path_temp);
+	if(self->source == SOURCE_REDUCE) {
+		list_destroy_and_destroy_elements(self->childs,(void *) free_temp);
+	} else {
+		free_src_block(self->childs);
+	}
 	free(self);
 }
 
@@ -285,6 +295,10 @@ void free_pending_map(t_pending_map* self) {
 	free(self);
 }
 
+//---------------------------------------------------------------------------
+void free_pending_reduce(t_pending_reduce* self) {
+	free(self);
+}
 //---------------------------------------------------------------------------
 void free_info_nodo(t_info_nodo* self) {
 	free(self);
@@ -763,7 +777,7 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list) {
 
 
 //---------------------------------------------------------------------------
-uint32_t count_map_temps_in_node(t_list* temps_nodo, uint32_t id_nodo) {
+uint32_t count_maps_in_node(t_list* temps_nodo, uint32_t id_nodo) {
 
 	int _isSearchedTempNodo(t_temp_nodo* temp_nodo) {
 		return temp_nodo->id_nodo == id_nodo;
@@ -774,7 +788,7 @@ uint32_t count_map_temps_in_node(t_list* temps_nodo, uint32_t id_nodo) {
 	if(temp_nodo == NULL)
 		return 0;
 
-	return list_size(temp_nodo->temps_map);
+	return temp_nodo->amount_maps;
 }
 
 //---------------------------------------------------------------------------
@@ -813,7 +827,7 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo,
 	if(combiner) {
 		cant_mismo_nodo = 0;
 
-		cant_mismo_nodo += count_map_temps_in_node(temps_nodo, block_copy->id_nodo);
+		cant_mismo_nodo += count_maps_in_node(temps_nodo, block_copy->id_nodo);
 		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);//XXX
 
 		score += cant_mismo_nodo;
@@ -935,7 +949,7 @@ void add_pending_map(t_list* pending_maps, t_info_file* file_info, uint32_t bloc
 }
 
 //---------------------------------------------------------------------------
-void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nodo, uint32_t* last_id_temp) {
+void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nodo) {
 
 	int _isSearchedPendingMap(t_pending_map* pending_map) {
 		return pending_map->map_dest->id_map == id_map;
@@ -957,19 +971,23 @@ void remove_pending_map(t_list* pending_maps, uint32_t id_map, t_list* temps_nod
 	if(temp_nodo == NULL) {
 		temp_nodo = malloc(sizeof(t_temp_nodo));
 		temp_nodo->id_nodo = pending_map->map_dest->id_nodo;
-		temp_nodo->temps_map = list_create();
+		temp_nodo->orphan_temps = list_create();
+		temp_nodo->amount_maps = 0;
 		list_add(temps_nodo, temp_nodo);
 	}
 
 
-	t_temp_map* temp_map = malloc(sizeof(t_temp_map));
+	t_src_block* src_block = malloc(sizeof(t_src_block));
+	src_block->block_number = pending_map->block;
+	src_block->path_file = strdup(pending_map->map_dest->temp_file_name);
 
-	temp_map->id_temp = ++(*last_id_temp);
-	temp_map->path = strdup(pending_map->map_dest->temp_file_name);
-	temp_map->path_file_origin = strdup(pending_map->file->path);
-	temp_map->block_origin = pending_map->block;
+	t_temp* orphan_temp = malloc(sizeof(t_temp));
+	orphan_temp->source = SOURCE_MAP;
+	orphan_temp->path_temp = strdup(pending_map->map_dest->temp_file_name);
+	orphan_temp->childs = src_block;
 
-	list_add(temp_nodo->temps_map, temp_map);
+	(temp_nodo->amount_maps)++;
+	list_add(temp_nodo->orphan_temps, orphan_temp);
 
 	pthread_mutex_lock(&node_list_mutex);
 
@@ -996,7 +1014,6 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int so
 	int i, j, amount_files = list_size(file_list);
 	t_info_file* file_info;
 	uint32_t last_id_map = 0;
-	uint32_t last_id_temp = 0;
 
 	for (i = 0; i < amount_files; i++) {
 		file_info = list_get(file_list, i);
@@ -1032,7 +1049,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int so
 			switch (result_map.prot) {
 
 			case MAP_OK:
-				remove_pending_map(pending_maps, result_map.id_map, temps_nodo, &last_id_temp);
+				remove_pending_map(pending_maps, result_map.id_map, temps_nodo);
 				break;
 
 			case NODO_NOT_FOUND:
@@ -1106,13 +1123,12 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int so
 //---------------------------------------------------------------------------
 int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
 
-	void _buffer_add_temp_map(t_temp_map* temp_map) {
-		buffer_add_int(order_reduce_buff, temp_map->id_temp);
-		buffer_add_string(order_reduce_buff, temp_map->path);
+	void _buffer_add_temp(t_temp* temp) {
+		buffer_add_string(order_reduce_buff, temp->path_temp);
 	}
 
 	uint32_t amount_files_in_node;
-	amount_files_in_node = list_size(temp_nodo->temps_map);
+	amount_files_in_node = list_size(temp_nodo->orphan_temps);
 
 	if(amount_files_in_node == 0) {
 		log_warning(paranoid_log,"No se puede Realizar Reduce de 0 Maps en Nodo: %i !",temp_nodo->id_nodo);
@@ -1130,7 +1146,7 @@ int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
 	buffer_add_int(order_reduce_buff, puerto_nodo);
 	buffer_add_int(order_reduce_buff,amount_files_in_node);
 
-	list_iterate(temp_nodo->temps_map, (void *) _buffer_add_temp_map);
+	list_iterate(temp_nodo->orphan_temps, (void *) _buffer_add_temp);
 
 	return result;
 }
@@ -1138,12 +1154,12 @@ int buffer_add_temp_node(t_buffer* order_reduce_buff, t_temp_nodo* temp_nodo) {
 //---------------------------------------------------------------------------
 uint32_t id_from_nodo_host(t_list* temps_nodo) {
 
-	int _amount_temps(t_temp_nodo* temp_nodo) {
-		return list_size(temp_nodo->temps_map);
+	int _amount_maps_in_nodo(t_temp_nodo* temp_nodo) {
+		return temp_nodo->amount_maps;
 	}
 
 	t_temp_nodo* _mayorSegunCantidadTemps(t_temp_nodo* nodo1, t_temp_nodo* nodo2) {
-		return mayorSegun(nodo1, nodo2, (void *) _amount_temps);
+		return mayorSegun(nodo1, nodo2, (void *) _amount_maps_in_nodo);
 	}
 
 	t_temp_nodo* nodo_host = foldl1((void *) _mayorSegunCantidadTemps,temps_nodo);
@@ -1183,9 +1199,8 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 	uint32_t puerto_nodo = 0;
 	t_buffer* order_reduce_buff;
 
-	void _buffer_add_temp_map(t_temp_map* temp_map) {
-		buffer_add_int(order_reduce_buff, temp_map->id_temp);
-		buffer_add_string(order_reduce_buff, temp_map->path);
+	void _buffer_add_temp(t_temp* temp) {
+		buffer_add_string(order_reduce_buff, temp->path_temp);
 	}
 
 	int result = locate_nodo(temp_nodo->id_nodo, &ip_nodo, &puerto_nodo);
@@ -1194,7 +1209,7 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 		return -1;
 	}
 	uint32_t amount_files_in_node;
-	amount_files_in_node = list_size(temp_nodo->temps_map);
+	amount_files_in_node = list_size(temp_nodo->orphan_temps);
 
 	(*last_id_reduce)++;
 	char* partial_name = string_from_format("partial_reduce_%i_job_%i_.temp", *last_id_reduce, info_job.id_job);
@@ -1207,7 +1222,7 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 	buffer_add_int(order_reduce_buff, puerto_nodo);
 	buffer_add_int(order_reduce_buff,amount_files_in_node);
 
-	list_iterate(temp_nodo->temps_map, (void *) _buffer_add_temp_map);
+	list_iterate(temp_nodo->orphan_temps, (void *) _buffer_add_temp);
 
 	result = send_buffer_and_destroy(sockjob,order_reduce_buff);
 
@@ -1218,37 +1233,53 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 	return result;
 }
 
+
+//---------------------------------------------------------------------------
+int allNodesWithSingleTemp(t_list* temps_nodo) {
+
+	int _hasOnlyOneOrphanTemp(t_temp_nodo* temp_nodo) {
+		return list_size(temp_nodo->orphan_temps) == 1;
+	}
+
+	return list_all_satisfy(temps_nodo, (void *) _hasOnlyOneOrphanTemp);
+}
+
+//---------------------------------------------------------------------------
+int readyToFinalReduce(t_list* unmapped_blocks, t_list* temps_nodo) {
+	return list_is_empty(unmapped_blocks) && allNodesWithSingleTemp(temps_nodo);
+}
+
 //---------------------------------------------------------------------------
 int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result) {
 
 	uint32_t last_id_reduce = 0;
 	int result = 1;
 
+	t_list* pending_maps = list_create();
 	t_list* pending_reduces = list_create();
+	t_list* unmapped_blocks = list_create();
 
 
-	void _plan_partial_reduce(t_temp_nodo* temp_nodo) {
-		result = (result > 0) ? order_partial_reduce(info_job, temp_nodo, sockjob, &last_id_reduce) : result;
-		result = (result > 0) ? add_pending_reduce(temp_nodo, pending_reduces) : result;
+	while((result > 0) && (!readyToFinalReduce(unmapped_blocks, temps_nodo))) {
+		while((result > 0) && (!list_is_empty(unmapped_blocks))) {
+			//XXX Aquí hacer todos los maps que no se encotraron y esperar a resultados
+		}
+
+		void _plan_partial_reduce(t_temp_nodo* temp_nodo) {
+			result = (result > 0) ? order_partial_reduce(info_job, temp_nodo, sockjob, &last_id_reduce) : result;
+			if(result > 0)
+				add_pending_reduce(temp_nodo, pending_reduces);
+		}
+		list_iterate(temps_nodo, (void *) _plan_partial_reduce);
+
+		while((result > 0) && (!list_is_empty(pending_reduces))) {
+			//XXX Aquí esperar a todos los reduces lanzados en esta iteración, dependiendo de los resultados será el impacto en unmapped_blocks y en orphan_temps
+		}
 	}
 
-	result = 1;
-	list_iterate(temps_nodo, (void *) _plan_partial_reduce);
-	if(result <= 0) {
-		return result;
-	}
-
-	while(!list_is_empty(pending_reduces)) {
-
-	}
-
-
-
-
-//		//XXX Planear con Combiner
-//
-//		return 1;
-
+	list_destroy_and_destroy_elements(pending_maps,(void *) free_pending_map);
+	list_destroy_and_destroy_elements(unmapped_blocks,(void *) free_src_block);
+	list_destroy_and_destroy_elements(pending_reduces,(void *) free_pending_reduce);
 	return 1;
 }
 
@@ -1368,11 +1399,11 @@ void hilo_conex_job(t_hilo_job *job) {
 	result = (result > 0) ? receive_info_job(job, &info_job) : result;
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
 	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
-	if(info_job.combiner){
-		result = (result > 0) ? plan_combined_reduces(info_job, temps_nodo, job->sockfd, &final_result) : result;
-	} else {
+//	if(info_job.combiner){
+//		result = (result > 0) ? plan_combined_reduces(info_job, temps_nodo, job->sockfd, &final_result) : result;//XXX
+//	} else {
 		result = (result > 0) ? plan_unique_reduce(info_job, temps_nodo, job->sockfd, &final_result) : result;
-	}
+//	}
 	result = (result > 0) ? save_result_file_in_MDFS(info_job, &final_result) : result;
 
 	if (result > 0) {
@@ -1432,7 +1463,7 @@ int main(void) {
 	init_var_globales();
 
 	t_conf_MaRTA conf;
-	levantar_arch_conf_marta(&conf); //Levanta el archivo de configuracion "marta.cfg"
+	levantar_arch_conf_marta(&conf);
 	int hilos_de_job = 0;
 
 	int listener_jobs;

@@ -217,12 +217,12 @@ void hilo_map_job(t_map_dest* map_dest) {
 	if(socket_nodo != -1) {
 
 		//XXX Realización del Map aquí
-		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
-			log_error(paranoid_log, "no se pudo enviar el info job");
-		}
-		else {
-			log_info(paranoid_log, "Se envio correctamente info job");
-		}
+//		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
+//			log_error(paranoid_log, "no se pudo enviar el info job");
+//		}
+//		else {
+//			log_info(paranoid_log, "Se envio correctamente info job");
+//		}
 
 	}
 
@@ -379,14 +379,14 @@ void esperar_instrucciones_de_MaRTA() {
 				}
 
 				for(j=0; (j< amount_files_in_node)  && (result > 0); j++) {
-					uint32_t id_temp;
+//					uint32_t id_temp;
 					char* path;
 
-					result = (result > 0)? receive_int_in_order(socket_marta, &id_temp) : result;
+//					result = (result > 0)? receive_int_in_order(socket_marta, &id_temp) : result;
 					result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path) : result;
 
 					if(result > 0) {
-						log_info(paranoid_log, "Temp ID: %i, Path: %s", id_temp,path);
+						log_info(paranoid_log, "Path: %s",path);
 					}
 					free(path);
 				}

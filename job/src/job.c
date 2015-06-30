@@ -19,8 +19,11 @@
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h> //Esta la agregeue para poder definir int con tamaño especifico (uint32_t)
 #include "../../connectionlib/connectionlib.h"
@@ -95,6 +98,8 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest);
 void hilo_map_job(t_map_dest* map_dest);
 int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest);
 void hilo_reduce_job(t_reduce_dest* reduce_dest);
+int mapearArchivoDeMap ();
+int abrirArchivoDeDatos(char*);
 
 //######################################  Variables Globales  #######################################
 t_log* paranoid_log;
@@ -103,9 +108,36 @@ pthread_mutex_t conex_marta_ready;
 int socket_marta;
 
 conf_job* conf;
+char *codigoMap;
 
 
 //######################################  Funciones  #######################################
+//---------------------------------------------------------------------------
+int mapearArchivoDeMap (){
+	int fdMap;
+	struct stat sbuf;
+	fdMap = abrirArchivoDeDatos(conf->path_map);
+	if(fdMap == -1) {
+		log_error(paranoid_log,"no se pudo mappear el archivo de Datos!");
+		return -1;
+	}
+	if (fstat(fdMap, &sbuf) == -1) {
+		perror("fstat()");
+	}
+	codigoMap = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fdMap, 0);
+
+	return 1;
+}
+
+//---------------------------------------------------------------------------
+int abrirArchivoDeDatos(char* path){
+	int fd;
+	if ((fd = open(path, O_RDWR)) == -1) {
+		log_error(paranoid_log,"No se pudo abrir el archivo de Datos");
+		return -1;
+	}
+	return fd;
+}
 //---------------------------------------------------------------------------
 void free_info_job(info_new_job* info) {
 	free(info->path_result_file);
@@ -215,17 +247,21 @@ void hilo_map_job(t_map_dest* map_dest) {
 //---------------------------------------------------------------------------
 int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
 	int result = 1;
+
 	t_buffer* map_to_Nodo_buff;
-    char *map_script = conf->path_map;
     char *path_result_map = conf->path_result_file;
     char* path_map = conf->paths_to_apply_files;
 	map_to_Nodo_buff = buffer_create_with_protocol(ORDER_MAP);
+
+	if(mapearArchivoDeMap()==1){
+		perror("error de mapeo de archivo");
+	}
 
 	buffer_add_int(map_to_Nodo_buff, map_dest->ip_nodo);
 	buffer_add_int(map_to_Nodo_buff, map_dest->id_nodo);
 	buffer_add_int(map_to_Nodo_buff, map_dest->block);
 	buffer_add_string(map_to_Nodo_buff, map_dest->temp_file_name);
-	buffer_add_string(map_to_Nodo_buff, map_script);
+	buffer_add_string(map_to_Nodo_buff, codigoMap);
 	buffer_add_string(map_to_Nodo_buff, path_map);
 	buffer_add_string(map_to_Nodo_buff, path_result_map);
 

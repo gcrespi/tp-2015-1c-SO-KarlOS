@@ -154,11 +154,9 @@ void ls();
 void cd(char*);
 void rm(char*);
 void mv(char*,char*);
-void rname(char*,char*);
 void makedir(char*);
 void remdir(char*);
 void mvdir(char*, char*);
-void renamedir(char*,char*);
 void upload(char*, char*);
 void download(char*, char*);
 void md5(char*);
@@ -201,6 +199,9 @@ struct t_arch* get_arch_from_path(char* path);
 void levantar_nodos_de_dir(struct t_dir*);
 void foreach_dir_do(void(*closure)(struct t_dir*));
 void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir*);
+void clean_copies_from_nodo(int);
+int save_result(char*, char*, int);
+void copia_bloque_destroy(struct t_copia_bloq*);
 
 //Variables Globales
 struct conf_fs conf; //Configuracion del fs
@@ -526,9 +527,7 @@ int receive_marta_instructions(int *martaSock, fd_set *master) {
 		result = (result > 0) ? receive_dinamic_array_in_order(*martaSock,(void **) &path_result) : result;
 
 		if(result > 0) {
-			//XXX Hacer Magia de guardar el resultado
-			result = 1; //XXX Dependerá de si puede realizar la operación o no
-
+			result = save_result(path_result, src_name, id_nodo);
 
 			t_buffer* save_result_buff;
 			if(result > 0) {
@@ -739,6 +738,7 @@ void set_root(){
 void levantar_nodo(struct t_copia_bloq* copy){
 	struct t_nodo* nodo;
 	nodo = find_nodo_with_ID(copy->id_nodo);
+	//TODO crear kbitarray
 	kbitarray_set_bit(nodo->bloquesLlenos, copy->bloq_nodo);
 }
 
@@ -770,6 +770,30 @@ void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir* dir
 		foreach_dir_do_starts_from((void*) closure, subdir);
 	}
 	list_iterate(dir->list_dirs, (void*) _apply_closure);
+}
+
+//---------------------------------------------------------------------------
+void clean_copies_from_nodo(int ID_nodo){
+	void _delete_copies_in_dir(struct t_dir* dir){
+		void _delete_copies_in_arch(struct t_arch* arch){
+			void _delete_copies_in_bloq(struct t_bloque* block){
+				int _eq_id_nodo(struct t_copia_bloq* copy){
+					return copy->id_nodo == ID_nodo;
+				}
+				list_remove_and_destroy_by_condition(block->list_copias,(void*) _eq_id_nodo,(void*) copia_bloque_destroy);
+			}
+			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
+		}
+		list_iterate(dir->list_archs, (void*) _delete_copies_in_arch);
+	}
+	foreach_dir_do((void*) _delete_copies_in_dir);
+}
+
+//---------------------------------------------------------------------------
+int save_result(char* path_result, char* src_name, int ID_nodo){ // MAGIC TODO!!
+
+	//receive_entire_file_by_parts();
+	return 1;
 }
 
 							  //FINDERS
@@ -853,11 +877,22 @@ int any_arch_with_name(char* name, t_list* list){
 }
 
 //---------------------------------------------------------------------------
-int any_nodo_with_ID(int id, t_list* list){
+int any_nodo_with_ID(int id){
 	int _eq_ID(struct t_nodo* nodo){
 		return nodo->id_nodo==id;
 	}
-	return list_any_satisfy(list, (void*) _eq_ID);
+	pthread_mutex_lock(&mutex_listaNodos);
+	int result = list_any_satisfy(listaNodos, (void*) _eq_ID);
+	pthread_mutex_unlock(&mutex_listaNodos);
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int any_info_nodo_with_ID(int id){
+	int _eq_ID(struct info_nodo* infonodo){
+		return infonodo->id==id;
+	}
+	return list_any_satisfy(list_info_nodo, (void*) _eq_ID);
 }
 
 //---------------------------------------------------------------------------
@@ -918,7 +953,7 @@ void dir_destroy(struct t_dir* self){
 }
 
 //---------------------------------------------------------------------------
-void* list_remove_elem(t_list* list, void* elem){  //XXX uso interesante para biblioteca
+void* list_remove_elem(t_list* list, void* elem){
 	int _eq_ptr(void* something){
 		return something==elem;
 	}
@@ -926,7 +961,7 @@ void* list_remove_elem(t_list* list, void* elem){  //XXX uso interesante para bi
 }
 
 //---------------------------------------------------------------------------
-void list_destroy_elem(t_list* list, void* elem, void* elem_destroyer){  //XXX uso interesante para biblioteca
+void list_destroy_elem(t_list* list, void* elem, void* elem_destroyer){
 	int _eq_ptr(void* something){
 		return something==elem;
 	}
@@ -1012,7 +1047,7 @@ int recv_block(char** data, struct t_nodo* nodo, int index_set) {
 int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 	struct t_nodo* nodo_disp;
 	int i, fin = 0, index_set;
-	int data_last_index = string_length(data)-1, //XXX mmm no estoy tan seguro de lo que se hace acá, me parece mejor usar el stat
+	int data_last_index = string_length(data)-1,
 		block_start = 0,
 		block_end;
 	t_list* list_used = list_create();
@@ -1331,9 +1366,9 @@ void receive_command(char* readed, int max_command_length){
 
 char execute_command(char* command){
 
-	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","ls","cd","rm","mv","rename","mkdir","rmdir","mvdir",
-													"renamedir","upload","download","md5","blocks","rmblock","cpblock","lsrequest",
-													"lsnode","addnode","rmnode", "clear","exit","","","","","",""};
+	char comandos_validos[MAX_COMMANOS_VALIDOS][16]={"help","format","pwd","ls","cd","rm","mv","mkdir","rmdir","mvdir",
+													 "upload","download","md5","blocks","rmblock","cpblock","lsrequest",
+													 "lsnode","addnode","rmnode", "clear","exit","","","","","",""};
 	int i,salir=0;
 	string_static_trim(command);
 	if(command[0]=='\0')
@@ -1349,28 +1384,26 @@ char execute_command(char* command){
 		case  4: cd(subcommands[1]); break;
 		case  5: rm(subcommands[1]); break;
 		case  6: mv(subcommands[1],subcommands[2]); break;
-		case  7: rname(subcommands[1],subcommands[2]); break;
 
-		case  8: makedir(subcommands[1]); break;
-		case  9: remdir(subcommands[1]); break;
-		case 10: mvdir(subcommands[1],subcommands[2]); break;
-		case 11: renamedir(subcommands[1],subcommands[2]); break;
+		case  7: makedir(subcommands[1]); break;
+		case  8: remdir(subcommands[1]); break;
+		case  9: mvdir(subcommands[1],subcommands[2]); break;
 
-		case 12: upload(subcommands[1],subcommands[2]); break;
-		case 13: download(subcommands[1],subcommands[2]); break;
-		case 14: md5(subcommands[1]); break;
+		case 10: upload(subcommands[1],subcommands[2]); break;
+		case 11: download(subcommands[1],subcommands[2]); break;
+		case 12: md5(subcommands[1]); break;
 
-		case 15: blocks(subcommands[1]); break;
-		case 16: rmblock(subcommands[1],subcommands[2]); break;
-		case 17: cpblock(subcommands[1],subcommands[2]); break;
+		case 13: blocks(subcommands[1]); break;
+		case 14: rmblock(subcommands[1],subcommands[2]); break;
+		case 15: cpblock(subcommands[1],subcommands[2]); break;
 
-		case 18: lsrequest(); break;
-		case 19: lsnode(); break;
-		case 20: addnode(subcommands[1]); break;
-		case 21: rmnode(subcommands[1]); break;
+		case 16: lsrequest(); break;
+		case 17: lsnode(); break;
+		case 18: addnode(subcommands[1]); break;
+		case 19: rmnode(subcommands[1]); break;
 
-		case 22: printf(CLEAR); break;
-		case 23: salir=1; break;
+		case 20: printf(CLEAR); break;
+		case 21: salir=1; break;
 
 	default:
 		printf("%s: no es un comando valido\n", subcommands[0]);
@@ -1509,29 +1542,6 @@ void mv(char* old_path, char* new_path) {
 }
 
 //---------------------------------------------------------------------------
-void rname(char* arch_path, char* new_name) {
-	struct t_arch *arch_aux;
-	char* aux_name;
-	if(arch_path==NULL){
-		puts("mv: falta un archivo como operando");
-	} else if((arch_aux = get_arch_from_path(arch_path))!=NULL) {
-		if(new_name!=NULL) {
-			if(is_valid_arch_name(new_name, arch_aux->parent_dir)) {
-				aux_name = arch_aux->nombre;
-				arch_aux->nombre = string_duplicate(new_name);
-				free(aux_name);
-			} else {
-				printf("%s: no es un nombre valido\n",new_name);
-			}
-		} else {
-			puts("renamedir: falta un nombre como operando");
-		}
-	} else {
-		printf("%s: el archivo no existe\n",arch_path);
-	}
-}
-
-//---------------------------------------------------------------------------
 void makedir(char* dir_path){
 	if (dir_path==NULL) {
 		puts("mkdir: falta un operando");
@@ -1554,7 +1564,7 @@ void makedir(char* dir_path){
 }
 
 //---------------------------------------------------------------------------
-void remdir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
+void remdir(char* dir_path){
 	struct t_dir* dir_aux;
 	if(dir_path==NULL){
 		puts("rmdir: falta un operando");
@@ -1577,7 +1587,7 @@ void remdir(char* dir_path){  //TODO Hay que persistir algunas cosas aca
 }
 
 //---------------------------------------------------------------------------
-void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas cosas aca
+void mvdir(char* old_path, char* new_path){
 	struct t_dir *dir_aux,
 				 *parent_dir_aux;
 	char *dir_name,
@@ -1588,7 +1598,7 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
-//				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
+//				moverDirectorio(dir_aux,parent_dir_aux,dir_name); TODO
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;
@@ -1602,29 +1612,6 @@ void mvdir(char* old_path, char* new_path){  //TODO Hay que persistir algunas co
 		}
 	} else {
 		printf("%s: el directorio no existe\n",old_path);
-	}
-}
-
-//---------------------------------------------------------------------------
-void renamedir(char* dir_path, char* new_name){ //XXX esto no estaria siendo muy inutil
-	struct t_dir* dir_aux;
-	char* old_name;
-	if(dir_path==NULL){
-		puts("renamedir: falta un directorio como operando");
-	} else if((dir_aux = get_dir_from_path(dir_path))!=NULL) {
-		if(new_name!=NULL) {
-			if(is_valid_dir_name(new_name, dir_aux->parent_dir)) {
-				old_name = dir_aux->nombre;
-				dir_aux->nombre = string_duplicate(new_name);
-				free(old_name);
-			} else {
-				printf("%s: no es un nombre valido\n",new_name);
-			}
-		} else {
-			puts("renamedir: falta un nombre como operando");
-		}
-	} else {
-		puts("error: el directorio no existe");
 	}
 }
 
@@ -1836,7 +1823,7 @@ void lsnode() {
 		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
 		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
 		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
-		if (ptr_nodo->estado==CONECTADO){  // <-XXX: mostrar asi o los desconectados no mostrarlos???
+		if (ptr_nodo->estado==CONECTADO){
 			printf("  *Estado: CONECTADO\n");
 		} else {
 			printf("  *Estado: DESCONECTADO\n");
@@ -1845,38 +1832,34 @@ void lsnode() {
 }
 
 //---------------------------------------------------------------------------
-void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
+void addnode(char* IDstr){  //TODO Hay que persistir ID y CANT_BLOQUES del nodo
 	int node_id;
 	struct t_nodo* viejo_nodo;
 
-	int _eq_ID(struct info_nodo* ninf){
-		return ninf->id == node_id;
-	}
-
 	if(IDstr!=NULL){
 		node_id = atoi(IDstr);
-		if(any_nodo_with_ID(node_id, list_info_nodo)){
+		int _eq_ID(struct info_nodo* ninf){
+					return ninf->id == node_id;
+		}
+		if(any_info_nodo_with_ID(node_id)){
 			struct info_nodo* infnod = list_remove_by_condition(list_info_nodo, (void*) _eq_ID);
 
-			pthread_mutex_lock(&mutex_listaNodos);
-			viejo_nodo = list_find(listaNodos, (void*) _eq_ID);
-			pthread_mutex_unlock(&mutex_listaNodos);
+			viejo_nodo = find_nodo_with_ID(node_id);
 
 			if(viejo_nodo != NULL) {
-//				if(!(infnod->nodo_nuevo)) {
-					pthread_mutex_lock(&mutex_listaNodos);
-					viejo_nodo->estado = CONECTADO;
-					viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
-					viejo_nodo->ip_listen = infnod->ip_listen;
-					viejo_nodo->port_listen = infnod->port_listen;
-					viejo_nodo->usando_socket = 0;
-					if(infnod->nodo_nuevo) {
-						viejo_nodo->cantidad_bloques = infnod->cant_bloques;
-						kbitarray_destroy(viejo_nodo->bloquesLlenos);
-						viejo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
-						//XXX FALTA borrar en estructura de archivos las copias que se encontraban en este bloque
-					}
-					pthread_mutex_unlock(&mutex_listaNodos);
+				pthread_mutex_lock(&mutex_listaNodos);
+				viejo_nodo->estado = CONECTADO;
+				viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
+				viejo_nodo->ip_listen = infnod->ip_listen;
+				viejo_nodo->port_listen = infnod->port_listen;
+				viejo_nodo->usando_socket = 0;
+				if(infnod->nodo_nuevo) {
+					clean_copies_from_nodo(node_id);
+					kbitarray_destroy(viejo_nodo->bloquesLlenos);
+					viejo_nodo->cantidad_bloques = infnod->cant_bloques;
+					viejo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
+				}
+				pthread_mutex_unlock(&mutex_listaNodos);
 			} else {
 				struct t_nodo* nuevo_nodo;
 				nuevo_nodo = malloc(sizeof(struct t_nodo));
@@ -1888,11 +1871,11 @@ void addnode(char* IDstr){  //TODO Hay que persistir algunas cosas aca
 					nuevo_nodo->ip_listen = infnod->ip_listen;
 					nuevo_nodo->port_listen = infnod->port_listen;
 					nuevo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
-				info_nodo_destroy(infnod);
 				pthread_mutex_lock(&mutex_listaNodos);
 				list_add(listaNodos, nuevo_nodo);
 				pthread_mutex_unlock(&mutex_listaNodos);
 			}
+			info_nodo_destroy(infnod);
 
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",node_id);
@@ -1910,9 +1893,7 @@ void rmnode(char* IDstr){
 	}
 	if(IDstr!=NULL){
 		ID = strtol(IDstr, NULL, 10);
-		pthread_mutex_lock(&mutex_listaNodos);
-		int result = any_nodo_with_ID(ID, listaNodos);
-		pthread_mutex_unlock(&mutex_listaNodos);
+		int result = any_nodo_with_ID(ID);
 
 		if(result){
 			pthread_mutex_lock(&mutex_listaNodos);

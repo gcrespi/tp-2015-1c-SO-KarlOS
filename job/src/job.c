@@ -98,8 +98,8 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest);
 void hilo_map_job(t_map_dest* map_dest);
 int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest);
 void hilo_reduce_job(t_reduce_dest* reduce_dest);
-int mapearArchivoDeMap ();
-int abrirArchivoDeDatos(char*);
+//int mapearArchivoDeMap ();
+//int abrirArchivoDeDatos(char*);
 
 //######################################  Variables Globales  #######################################
 t_log* paranoid_log;
@@ -113,7 +113,7 @@ char *codigoMap;
 
 //######################################  Funciones  #######################################
 //---------------------------------------------------------------------------
-int mapearArchivoDeMap (){
+/*int mapearArchivoDeMap (){
 	int fdMap;
 	struct stat sbuf;
 	fdMap = abrirArchivoDeDatos(conf->path_map);
@@ -137,7 +137,7 @@ int abrirArchivoDeDatos(char* path){
 		return -1;
 	}
 	return fd;
-}
+}*/
 //---------------------------------------------------------------------------
 void free_info_job(info_new_job* info) {
 	free(info->path_result_file);

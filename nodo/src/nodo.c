@@ -610,12 +610,14 @@ int realizar_Map(int socket) {
 	int result = 1;
     uint32_t nroBloque;
     uint32_t id;
-    char* map;
+    char* pathMap;
     char* destino;
-    result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+    result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &pathMap) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &id) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
 	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &destino) : result;
+	result = (result > 0) ?receive_entire_file_by_parts( socket,  destino,  BLOCK_SIZE) : result;
+																	// claramente se cambiara este parametro
 
 	if (id == conf.id){
 
@@ -623,11 +625,12 @@ int realizar_Map(int socket) {
 		//archivo para despues aplicar el map
 
 	puts("Realizando Tarea de map\n");
-	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
+	//iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
                        	//path de map a aplicar 	              nombre result
+	iniciar_Tarea_Map(pathMap, destino, nroBloque);
 	} else puts("No soy yo");
 
-	free(map);
+	free(pathMap);
 	free(destino);
 	return result;
 }
@@ -664,8 +667,7 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
 
 		int salida;
-		salida= fprintf (archivo,"%s",&data[indice]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
-
+		salida= fprintf (archivo,"%s",&data[indice]);
 		if(salida<0){
 			printf("Error in fprintf\n");
 			return;

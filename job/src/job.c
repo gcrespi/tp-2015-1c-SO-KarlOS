@@ -98,8 +98,8 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest);
 void hilo_map_job(t_map_dest* map_dest);
 int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest);
 void hilo_reduce_job(t_reduce_dest* reduce_dest);
-int mapearArchivoDeMap ();
-int abrirArchivoDeDatos(char*);
+//int mapearArchivoDeMap ();
+//int abrirArchivoDeDatos(char*);
 
 //######################################  Variables Globales  #######################################
 t_log* paranoid_log;
@@ -113,7 +113,7 @@ char *codigoMap;
 
 //######################################  Funciones  #######################################
 //---------------------------------------------------------------------------
-int mapearArchivoDeMap (){
+/*int mapearArchivoDeMap (){
 	int fdMap;
 	struct stat sbuf;
 	fdMap = abrirArchivoDeDatos(conf->path_map);
@@ -137,7 +137,7 @@ int abrirArchivoDeDatos(char* path){
 		return -1;
 	}
 	return fd;
-}
+}*/
 //---------------------------------------------------------------------------
 void free_info_job(info_new_job* info) {
 	free(info->path_result_file);
@@ -217,12 +217,12 @@ void hilo_map_job(t_map_dest* map_dest) {
 	if(socket_nodo != -1) {
 
 		//XXX Realización del Map aquí
-//		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
-//			log_error(paranoid_log, "no se pudo enviar el info job");
-//		}
-//		else {
-//			log_info(paranoid_log, "Se envio correctamente info job");
-//		}
+		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
+			log_error(paranoid_log, "No se pudo enviar Instrucciones de Map");
+		}
+		else {
+			log_info(paranoid_log, "Se envio correctamente Instrucciones de Map");
+		}
 
 	}
 
@@ -249,23 +249,16 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
 	int result = 1;
 
 	t_buffer* map_to_Nodo_buff;
-    char *path_result_map = conf->path_result_file;
-    char* path_map = conf->paths_to_apply_files;
-	map_to_Nodo_buff = buffer_create_with_protocol(ORDER_MAP);
+	map_to_Nodo_buff = buffer_create_with_protocol(EXECUTE_MAP);
 
-	if(mapearArchivoDeMap()==1){
-		perror("error de mapeo de archivo");
-	}
 
-	buffer_add_int(map_to_Nodo_buff, map_dest->ip_nodo);
 	buffer_add_int(map_to_Nodo_buff, map_dest->id_nodo);
 	buffer_add_int(map_to_Nodo_buff, map_dest->block);
 	buffer_add_string(map_to_Nodo_buff, map_dest->temp_file_name);
-	buffer_add_string(map_to_Nodo_buff, codigoMap);
-	buffer_add_string(map_to_Nodo_buff, path_map);
-	buffer_add_string(map_to_Nodo_buff, path_result_map);
+	result = send_buffer_and_destroy(socket_job, map_to_Nodo_buff);
 
-	send_buffer_and_destroy(socket_job, map_to_Nodo_buff);
+	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_map, (4*1024)) : result;
+
 
 	return result;
 }
@@ -297,7 +290,7 @@ void esperar_instrucciones_de_MaRTA() {
 	int finished = 0, error = 0;
 	t_hilo_map* hilo_map;
 	t_map_dest* map_dest;
-	t_reduce_dest* reduce_dest;
+	//t_reduce_dest* reduce_dest;
 	t_list* hilos_map = list_create();
 	//char *pathMapFile = conf->path_map;
 
@@ -341,8 +334,7 @@ void esperar_instrucciones_de_MaRTA() {
 		case ORDER_REDUCE:
 
 			//abrir hilo de reduce
-			reduce_dest = malloc(sizeof(t_reduce_dest));
-			free(reduce_dest);
+			//reduce_dest = malloc(sizeof(t_reduce_dest));
 			//Falta desarrollar instrucciones de reduce.
 
 			//XXX abrir hilo de reduce
@@ -554,7 +546,7 @@ int main(void) {
 
 	init_var_globales();
 
-	//conf_job conf; // estructura que contiene la info del arch de conf
+	//conf_job conf; // Espero que no haya problema, hace un tiempo paso a global esta variable
 	levantar_arch_conf_job();
 
 	socket_marta = solicitarConexionConMarta();

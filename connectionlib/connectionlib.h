@@ -33,6 +33,7 @@ enum protocolo {
 };
 
 #define BLOCK_SIZE (4*1024) //<-4KB               //20*1024*1024 //<-20MB
+#define MAX_PART_SIZE (4*1024)
 
 t_buffer* buffer_create();
 t_buffer* buffer_create_with_protocol(uint32_t protocolo);

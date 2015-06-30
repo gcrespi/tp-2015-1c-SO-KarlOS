@@ -871,7 +871,7 @@ t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_
 		self->id_map = ++(*last_id_map);
 		self->id_nodo = selected_copy->id_nodo;
 		self->block = selected_copy->block;
-		self->temp_file_name = string_from_format("map_%i_%i.temp", info_job.id_job, self->block);
+		self->temp_file_name = string_from_format("map_%i_%i.tmp", info_job.id_job, self->block);
 	} else {
 		log_error(paranoid_log,"No hay copias Activas del Archivo:%s Bloque: %i ", path_file, block_number);
 		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
@@ -1212,7 +1212,7 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 	amount_files_in_node = list_size(temp_nodo->orphan_temps);
 
 	(*last_id_reduce)++;
-	char* partial_name = string_from_format("partial_reduce_%i_job_%i_.temp", *last_id_reduce, info_job.id_job);
+	char* partial_name = string_from_format("partial_reduce_%i_job_%i_.tmp", *last_id_reduce, info_job.id_job);
 
 	order_reduce_buff = buffer_create_with_protocol(ORDER_PARTIAL_REDUCE);
 	buffer_add_int(order_reduce_buff, *last_id_reduce);
@@ -1295,7 +1295,7 @@ int plan_unique_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_f
 	}
 
 	final_result->id_nodo = id_from_nodo_host(temps_nodo);
-	final_result->file_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
+	final_result->file_name = string_from_format("final_result_job_%i.tmp",info_job.id_job);
 
 	t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
 	buffer_add_int(order_reduce_buff,++(last_id_reduce));

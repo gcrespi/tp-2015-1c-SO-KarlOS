@@ -79,6 +79,9 @@ pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t* mutex;
 
+pthread_mutex_t mutex_last_script;
+uint32_t last_script = 0;
+
 //Prototipos
 void levantar_arch_conf_nodo(); // devuelve una estructura con toda la info del archivo de configuracion "nodo.cfg"
 void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser enviada al fs al iniciar el nodo
@@ -96,7 +99,7 @@ int enviar_tmp(int);
 void inicializar_mutexs();
 void finalizar_mutexs();
 int receive_new_client_job();
-void free_hilo_job();
+void free_hilo_job(t_hilo_job* job);
 void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 //void terminar_hilos();
 void solicitarConexionConNodo(int *);
@@ -158,7 +161,7 @@ int main(void) {
 	pthread_join(thread2, NULL);
 	free_conf_nodo();
 	finalizar_mutexs();
-	free (lista_jobs);
+	list_destroy_and_destroy_elements(lista_jobs, (void *) free_hilo_job);
 	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
@@ -242,19 +245,19 @@ void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
 		  }
   		  printf("\n hilos de job... \n");
 
-		  if (receive_new_client_job(job->sockfd)) {
-			  list_add(lista_jobs, job);
+//		  if (receive_new_client_job(job->sockfd)) {
+		  list_add(lista_jobs, job);
 
-		      log_info(logger, "Creación de Hilo Job...");
-		      if (pthread_create(job->thr, NULL, (void *) esperar_instrucciones_job, &(job->sockfd)) != 0) {
-		    	  log_error(logger, "No se pudo crear Hilo Job");
-			      exit(-1);
-		      }
-
-		      hilos_de_job++;
-		  } else {
-			  free_hilo_job(job);
+		  log_info(logger, "Creación de Hilo Job...");
+		  if (pthread_create(job->thr, NULL, (void *) esperar_instrucciones_job, &(job->sockfd)) != 0) {
+			  log_error(logger, "No se pudo crear Hilo Job");
+			  exit(-1);
 		  }
+
+		  hilos_de_job++;
+//		  } else {
+//			  free_hilo_job(job);
+//		  }
 		  if (hilos_de_job >= 3) { //XXX
 			  bandera = 0;
 		  }
@@ -462,7 +465,7 @@ int enviar_tmp(int socket) {
 			fd, 0);
 	if (tmp == (caddr_t) (-1)) {
 		perror("mmap");
-		exit(1);//XXX extraer a funcion, de verdad quiero mapear esto? o leer secuencial?
+		exit(1);//XXX Acá en vez de mapear usar función nueva que envíe el temporal entero
 	}
 	log_info(logger,"mapeo correcto");
 
@@ -584,6 +587,7 @@ void inicializar_mutexs(void){
 		pthread_mutex_init(&mutex[i],NULL);
 	}
 
+	pthread_mutex_init(&mutex_last_script,NULL);
 }
 //----------------------------------------------------------------------------
 void finalizar_mutexs(void){
@@ -593,15 +597,27 @@ void finalizar_mutexs(void){
 	}
 	free(mutex);
 
+	pthread_mutex_destroy(&mutex_last_script);
 }
 
 //---------------------------------------------------------------------------
-void esperar_finalizacion_hilo_conex_job(t_hilo_job* jop) {
+void esperar_finalizacion_hilo_conex_job(t_hilo_job* job) {
 	void* ret_recep;
 
-	if (pthread_join(*(jop->thr), &ret_recep) != 0) {
+	if (pthread_join(*(job->thr), &ret_recep) != 0) {
 		printf("Error al hacer join del hilo\n");
 	}
+}
+
+//----------------------------------------------------------------------------
+uint32_t last_script_increment_and_take() {
+	uint32_t self;
+
+	pthread_mutex_lock(&mutex_last_script);
+	self = ++last_script;
+	pthread_mutex_unlock(&mutex_last_script);
+
+	return self;
 }
 
 //----------------------------------------------------------------------------
@@ -610,24 +626,31 @@ int realizar_Map(int socket) {
 	int result = 1;
     uint32_t nroBloque;
     uint32_t id;
-    char* map;
+    char* pathMap = string_from_format("map_script%i.sh",last_script_increment_and_take());
     char* destino;
-    result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &map) : result;
+
 	result = (result > 0) ? receive_int_in_order(socket, &id) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
 	result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &destino) : result;
+	result = (result > 0) ? receive_entire_file_by_parts( socket, pathMap, MAX_PART_SIZE) : result;
 
-	if (id == conf.id){
+	if(result > 0) {
 
-	// aca tendria que ir una funcion que me convierta el array recibido del job en un
-		//archivo para despues aplicar el map
+		if (id == conf.id){
 
-	puts("Realizando Tarea de map\n");
-	iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
-                       	//path de map a aplicar 	              nombre result
-	} else puts("No soy yo");
+		// aca tendria que ir una funcion que me convierta el array recibido del job en un
+			//archivo para despues aplicar el map
 
-	free(map);
+		puts("Realizando Tarea de map\n");
+		//iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
+							//path de map a aplicar 	              nombre result
+		iniciar_Tarea_Map(pathMap, destino, nroBloque);
+		} else puts("No soy yo");
+	} else {
+		log_error(logger,"No se pudo obtener el Map");
+	}
+
+	free(pathMap);
 	free(destino);
 	return result;
 }
@@ -637,9 +660,7 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBl
 {
 	FILE *entradaARedirigir = NULL;
 
-	char *comandoEntero= malloc(strlen(pathPrograma)+11+strlen(pathArchivoSalida));
-
-	sprintf(comandoEntero,"%s | sort > %s",pathPrograma,pathArchivoSalida);
+	char *comandoEntero = string_from_format("./%s | sort > %s", pathPrograma, pathArchivoSalida);
 
 	entradaARedirigir = popen (comandoEntero,"w");
 
@@ -664,8 +685,7 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
 
 		int salida;
-		salida= fprintf (archivo,"%s",&data[indice]); //Reemplazar "2" por nro Bloque donde se encutre los datos a realizar el map
-
+		salida= fprintf (archivo,"%s",&data[indice * BLOCK_SIZE]); //XXX faltan semaforos de data
 		if(salida<0){
 			printf("Error in fprintf\n");
 			return;

@@ -119,6 +119,7 @@ void free_conf_job() {
 	free(conf->path_reduce);
 	free(conf->paths_to_apply_files);
 	free(conf->path_result_file);
+	free(conf);
 }
 
 
@@ -305,6 +306,7 @@ void esperar_instrucciones_de_MaRTA() {
 
 			//abrir hilo de reduce
 			reduce_dest = malloc(sizeof(t_reduce_dest));
+			free(reduce_dest);
 			//Falta desarrollar instrucciones de reduce.
 
 			//XXX abrir hilo de reduce
@@ -497,7 +499,7 @@ void init_var_globales() {
 
 	pthread_mutex_init(&conex_marta_ready, NULL);
 
-	conf_job* conf;
+	conf = malloc(sizeof(conf_job));
 
 	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 }

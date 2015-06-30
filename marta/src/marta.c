@@ -20,6 +20,10 @@
 #include <commons/log.h>
 #include "../../connectionlib/connectionlib.h"
 
+typedef enum {
+	SOURCE_MAP, SOURCE_REDUCE
+} t_source;
+
 //########################################  Estructuras  #########################################
 
 //************************* Campos De Archivo Conf ************************
@@ -58,8 +62,13 @@ typedef struct {
 typedef struct {
 	uint32_t id_nodo;
 	t_list* temps_map;
-	//XXX falta temp total del nodo
 } t_temp_nodo;
+
+typedef struct {
+	char* path_temp;
+	t_source source;
+	void* childs; //puede ser un t_list* de t_temps ó un t_src_block*
+} t_temp;
 
 typedef struct {
 	uint32_t id_nodo;
@@ -85,6 +94,11 @@ typedef struct {
 	uint32_t block;
 	t_map_dest* map_dest;
 } t_pending_map;
+
+typedef struct {
+	uint32_t id_nodo;
+//	t_map_dest* map_dest;
+} t_pending_reduce;
 
 typedef struct {
 	uint32_t prot;
@@ -155,7 +169,9 @@ int get_info_files_from_FS(char **paths_files, t_list* file_list);
 t_map_dest* planificar_map(t_info_job info_job, char* path_file, uint32_t block_number, uint32_t* last_id_map, t_list* temps_nodo, t_list* pending_maps);
 
 int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int sockjob);
-int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
+//int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
+int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
+int plan_unique_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result);
 int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result);
 
 void hilo_conex_job(t_hilo_job *job);
@@ -1136,51 +1152,142 @@ uint32_t id_from_nodo_host(t_list* temps_nodo) {
 }
 
 //---------------------------------------------------------------------------
-int plan_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result) {
+void add_pending_reduce(t_temp_nodo* temp_nodo, t_list* pending_reduces) {
+
+	t_pending_reduce* pending_reduce = malloc(sizeof(t_pending_reduce));
+
+	pending_reduce->id_nodo = temp_nodo->id_nodo;
+
+	int _isNodeSearched(t_info_nodo* info_nodo) {
+		return info_nodo->id_nodo == temp_nodo->id_nodo;
+	}
+
+	pthread_mutex_lock(&node_list_mutex);
+	t_info_nodo* info_nodo = list_find(info_nodos, (void *) _isNodeSearched);
+
+	if (info_nodo == NULL) {
+		log_error(paranoid_log,"No Existe el Nodo cargado en lista cuando debería!!! (Intentando incrementar cant ops en curso)");
+	} else {
+		(info_nodo->cant_ops_en_curso)++;
+	}
+
+	pthread_mutex_unlock(&node_list_mutex);
+
+	list_add(pending_reduces, pending_reduce);
+}
+
+//---------------------------------------------------------------------------
+int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjob, uint32_t *last_id_reduce) {
+
+	uint32_t ip_nodo = 0;
+	uint32_t puerto_nodo = 0;
+	t_buffer* order_reduce_buff;
+
+	void _buffer_add_temp_map(t_temp_map* temp_map) {
+		buffer_add_int(order_reduce_buff, temp_map->id_temp);
+		buffer_add_string(order_reduce_buff, temp_map->path);
+	}
+
+	int result = locate_nodo(temp_nodo->id_nodo, &ip_nodo, &puerto_nodo);
+
+	if(result <= 0) {
+		return -1;
+	}
+	uint32_t amount_files_in_node;
+	amount_files_in_node = list_size(temp_nodo->temps_map);
+
+	(*last_id_reduce)++;
+	char* partial_name = string_from_format("partial_reduce_%i_job_%i_.temp", *last_id_reduce, info_job.id_job);
+
+	order_reduce_buff = buffer_create_with_protocol(ORDER_PARTIAL_REDUCE);
+	buffer_add_int(order_reduce_buff, *last_id_reduce);
+	buffer_add_string(order_reduce_buff, partial_name);
+	buffer_add_int(order_reduce_buff, temp_nodo->id_nodo);
+	buffer_add_int(order_reduce_buff, ip_nodo);
+	buffer_add_int(order_reduce_buff, puerto_nodo);
+	buffer_add_int(order_reduce_buff,amount_files_in_node);
+
+	list_iterate(temp_nodo->temps_map, (void *) _buffer_add_temp_map);
+
+	result = send_buffer_and_destroy(sockjob,order_reduce_buff);
+
+	if (result <= 0) {
+		log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce Parcial al Job");
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result) {
 
 	uint32_t last_id_reduce = 0;
 	int result = 1;
 
-//	t_list* pending_reduce = list_create();
-//	t_pending_reduce* pending_reduce;
+	t_list* pending_reduces = list_create();
 
-//	if(info_job.combiner) {
+
+	void _plan_partial_reduce(t_temp_nodo* temp_nodo) {
+		result = (result > 0) ? order_partial_reduce(info_job, temp_nodo, sockjob, &last_id_reduce) : result;
+		result = (result > 0) ? add_pending_reduce(temp_nodo, pending_reduces) : result;
+	}
+
+	result = 1;
+	list_iterate(temps_nodo, (void *) _plan_partial_reduce);
+	if(result <= 0) {
+		return result;
+	}
+
+	while(!list_is_empty(pending_reduces)) {
+
+	}
+
+
+
+
 //		//XXX Planear con Combiner
 //
 //		return 1;
-//	} else {
 
-		uint32_t nodes_amount = list_size(temps_nodo);
-		if(nodes_amount == 0) {
-			log_error(paranoid_log,"No se puede Realizar Reduce de 0 Nodos!!!");
-			return -1;
-		}
+	return 1;
+}
 
-		final_result->id_nodo = id_from_nodo_host(temps_nodo);
-		final_result->file_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
+//---------------------------------------------------------------------------
+int plan_unique_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_final_result* final_result) {
 
-		t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
-		buffer_add_int(order_reduce_buff,++(last_id_reduce));
-		buffer_add_string(order_reduce_buff,final_result->file_name);
-		buffer_add_int(order_reduce_buff, final_result->id_nodo);
-		buffer_add_int(order_reduce_buff, nodes_amount);
+	uint32_t last_id_reduce = 0;
 
-		void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
-			result = (result > 0) ? buffer_add_temp_node(order_reduce_buff, temp_nodo) : result;
-		}
-		list_iterate(temps_nodo, (void *) _buffer_add_temp_node);
+	uint32_t nodes_amount = list_size(temps_nodo);
+	if(nodes_amount == 0) {
+		log_error(paranoid_log,"No se puede Realizar Reduce de 0 Nodos!!!");
+		return -1;
+	}
 
-		result =  (result > 0) ? send_buffer_and_destroy(sockjob,order_reduce_buff) : result;
+	final_result->id_nodo = id_from_nodo_host(temps_nodo);
+	final_result->file_name = string_from_format("final_result_job_%i.temp",info_job.id_job);
 
-		if(result < 0) {
-			log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce al Job");
-			free_final_result(final_result);
-			return -1;
-		}
+	t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
+	buffer_add_int(order_reduce_buff,++(last_id_reduce));
+	buffer_add_string(order_reduce_buff,final_result->file_name);
+	buffer_add_int(order_reduce_buff, final_result->id_nodo);
+	buffer_add_int(order_reduce_buff, nodes_amount);
 
+	int result = 1;
 
-//		result = (result > 0)? receive_result_reduce() : result;
-//	}
+	void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
+		result = (result > 0) ? buffer_add_temp_node(order_reduce_buff, temp_nodo) : result;
+	}
+	list_iterate(temps_nodo, (void *) _buffer_add_temp_node);
+
+	result =  (result > 0) ? send_buffer_and_destroy(sockjob,order_reduce_buff) : result;
+
+	if(result < 0) {
+		log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce al Job");
+		free_final_result(final_result);
+		return -1;
+	}
+
+	//result = (result > 0)? receive_result_reduce() : result; XXX recibir resultado operacion
 
 	return 1;
 }
@@ -1261,7 +1368,11 @@ void hilo_conex_job(t_hilo_job *job) {
 	result = (result > 0) ? receive_info_job(job, &info_job) : result;
 	result = (result > 0) ? get_info_files_from_FS(info_job.paths_files, file_list) : result;
 	result = (result > 0) ? plan_maps(info_job, file_list, temps_nodo, job->sockfd) : result;
-	result = (result > 0) ? plan_reduces(info_job, temps_nodo, job->sockfd, &final_result) : result;
+	if(info_job.combiner){
+		result = (result > 0) ? plan_combined_reduces(info_job, temps_nodo, job->sockfd, &final_result) : result;
+	} else {
+		result = (result > 0) ? plan_unique_reduce(info_job, temps_nodo, job->sockfd, &final_result) : result;
+	}
 	result = (result > 0) ? save_result_file_in_MDFS(info_job, &final_result) : result;
 
 	if (result > 0) {

@@ -299,7 +299,7 @@ void esperar_instrucciones_de_MaRTA() {
 	int finished = 0, error = 0;
 	t_hilo_map* hilo_map;
 	t_map_dest* map_dest;
-	t_reduce_dest* reduce_dest;
+	//t_reduce_dest* reduce_dest;
 	t_list* hilos_map = list_create();
 	//char *pathMapFile = conf->path_map;
 
@@ -343,7 +343,7 @@ void esperar_instrucciones_de_MaRTA() {
 		case ORDER_REDUCE:
 
 			//abrir hilo de reduce
-			reduce_dest = malloc(sizeof(t_reduce_dest));
+			//reduce_dest = malloc(sizeof(t_reduce_dest));
 			//Falta desarrollar instrucciones de reduce.
 
 			//XXX abrir hilo de reduce
@@ -536,7 +536,7 @@ void init_var_globales() {
 
 	pthread_mutex_init(&conex_marta_ready, NULL);
 
-	conf_job* conf;
+	//conf_job* conf;
 
 	paranoid_log = log_create("./logJob.log", "JOB", 1, LOG_LEVEL_TRACE);
 }
@@ -555,7 +555,7 @@ int main(void) {
 
 	init_var_globales();
 
-	//conf_job conf; // estructura que contiene la info del arch de conf
+	//conf_job conf; // Espero que no haya problema, hace un tiempo paso a global esta variable
 	levantar_arch_conf_job();
 
 	socket_marta = solicitarConexionConMarta();

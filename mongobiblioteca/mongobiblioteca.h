@@ -12,11 +12,13 @@
 #include <libmongoc-1.0/mongoc.h>
 #include <stdio.h>
 #include <commons/collections/list.h>
+#include "../kbitarray/kbitarray.h"
 
 mongoc_client_t *client;
 mongoc_collection_t *directorioCollection;
 mongoc_collection_t *archivoCollection;
 mongoc_collection_t *bloqueCollection;
+mongoc_collection_t *nodoCollection;
 
 struct t_dir {
     int id_directorio;
@@ -41,6 +43,17 @@ struct t_bloque {
  t_list* list_copias;
 };
 
+struct t_nodo {
+	uint32_t id_nodo;
+	uint32_t socket_FS_nodo;
+	char usando_socket;
+	uint32_t ip_listen;
+	uint32_t port_listen;
+	int estado;
+	int cantidad_bloques;
+	t_kbitarray* bloquesLlenos;
+};
+
 void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo);
 void eliminarBloque(int idArchivo, int nroBloque);
 void crearDirectorioEn(struct t_dir* directorioNuevo, struct t_dir* directorioPadre);
@@ -56,5 +69,8 @@ struct t_dir * levantarRaizDeMongo();
 int ultimoIdDirectorio();
 int ultimoIdArchivo();
 void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name);
+void eliminarNodo(struct t_nodo* nodo);
+void crearNodo(struct t_nodo * nodo);
+void levantarNodos(t_list* lista_nodos);
 
 #endif /* MONGOBIBLIOTECA_H_ */

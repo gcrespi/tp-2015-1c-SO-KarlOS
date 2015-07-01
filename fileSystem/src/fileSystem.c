@@ -54,6 +54,8 @@ enum t_client_type {
 	MARTA,NODO, INVALID
 };
 
+
+/* YA ESTA EN LA MONGOLIB
 //no se persisten: estado, aceptado
 //ya que cuando se cae el FS deben volver a conectar
 struct t_nodo {
@@ -83,7 +85,6 @@ struct t_nodo {
 
 };
 
-/*
 //Estructura de carpetas del FS (Se persiste)
 struct t_dir {
 	struct t_dir* parent_dir;
@@ -126,6 +127,8 @@ struct t_arch {
 	t_list* bloques;
 };
 */
+
+
 // La estructura que contiene todos los datos del arch de conf
 struct conf_fs {
 	int fs_vacio;
@@ -236,6 +239,7 @@ int main(void) {
 		receive_command(command,MAX_COMMAND_LENGTH+1);
 		end = execute_command(command);
 	} while(!end);
+	puts("Bye :)");
 
 	pthread_cancel(t_listener);
 	dir_destroy(root);

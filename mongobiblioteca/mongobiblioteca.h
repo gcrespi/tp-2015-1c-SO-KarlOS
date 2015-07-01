@@ -20,6 +20,10 @@ mongoc_collection_t *archivoCollection;
 mongoc_collection_t *bloqueCollection;
 mongoc_collection_t *nodoCollection;
 
+enum t_estado_nodo {
+	DESCONECTADO,CONECTADO
+};
+
 struct t_dir {
     int id_directorio;
 	struct t_dir* parent_dir;

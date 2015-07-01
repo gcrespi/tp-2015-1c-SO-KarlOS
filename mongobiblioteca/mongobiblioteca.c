@@ -627,7 +627,8 @@ void levantarNodos(t_list* lista_nodos){
 			bson_iter_find_descendant (&iter, "cantidad_bloques", &id_iter)){
 				nodo->cantidad_bloques = bson_iter_int32(&id_iter);
 		}
-
+		nodo->estado = DESCONECTADO;
+		nodo->bloquesLlenos = kbitarray_create_and_clean_all(nodo->cantidad_bloques);
 		list_add(lista_nodos, nodo);
   }
 

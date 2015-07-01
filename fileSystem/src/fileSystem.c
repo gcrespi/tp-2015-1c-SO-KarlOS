@@ -45,17 +45,17 @@
 #define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
 
 //  Estados del nodo
-enum t_estado_nodo {
-	DESCONECTADO,CONECTADO
-};
-
-//  Estados del nodo
 enum t_client_type {
 	MARTA,NODO, INVALID
 };
 
-
 /* YA ESTA EN LA MONGOLIB
+
+//  Estados del nodo
+enum t_estado_nodo {
+	DESCONECTADO,CONECTADO
+};
+
 //no se persisten: estado, aceptado
 //ya que cuando se cae el FS deben volver a conectar
 struct t_nodo {
@@ -199,7 +199,7 @@ int estaActivoNodo(int);
 struct t_bloque* find_block_with_num(int,t_list*);
 int any_block_with_num(int,t_list*);
 struct t_arch* get_arch_from_path(char* path);
-void levantar_nodos_de_dir(struct t_dir*);
+void set_kbitarrays_de_nodos_del_dir(struct t_dir*);
 void foreach_dir_do(void(*closure)(struct t_dir*));
 void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir*);
 void clean_copies_from_nodo(int);
@@ -721,7 +721,8 @@ void levantar_arch_conf() {
 void preparar_fs () {
 	iniciarMongo();
 	set_root();
-//	levantar_nodos_de_dir(root);
+	levantarNodos(listaNodos);
+	//set_kbitarrays_de_nodos_del_dir(root);
 }
 
 //---------------------------------------------------------------------------
@@ -740,7 +741,7 @@ void levantar_nodo(struct t_copia_bloq* copy){
 }
 
 //---------------------------------------------------------------------------
-void levantar_nodos_de_dir(struct t_dir* dir){
+void set_kbitarrays_de_nodos_del_dir(struct t_dir* dir){
 	void _levantar_nodos_de_arch(struct t_arch* arch){
 		void _levantar_nodos_de_bloq(struct t_bloque* block){
 			void _levantar_nodo_de_copia(struct t_copia_bloq* copy){
@@ -751,7 +752,7 @@ void levantar_nodos_de_dir(struct t_dir* dir){
 		list_iterate(arch->bloques, (void*) _levantar_nodos_de_bloq);
 	}
 	list_iterate(dir->list_archs, (void*) _levantar_nodos_de_arch);
-	foreach_dir_do((void*) levantar_nodos_de_dir);
+	foreach_dir_do((void*) set_kbitarrays_de_nodos_del_dir);
 }
 
 
@@ -1237,7 +1238,7 @@ struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 		new_dir->parent_dir = parent_dir;
 		new_dir->list_dirs = list_create();
 		new_dir->list_archs = list_create();
-	//crearDirectorioEn(new_dir,new_dir->parent_dir); TODO
+	crearDirectorioEn(new_dir,new_dir->parent_dir);
 	dir_id_counter++;
 	return new_dir;
 }
@@ -1875,7 +1876,7 @@ void addnode(char* IDstr){  //TODO Hay que persistir ID y CANT_BLOQUES del nodo
 
 			viejo_nodo = find_nodo_with_ID(node_id);
 
-			if(viejo_nodo != NULL) {
+			if(viejo_nodo != NULL) { //FIXME!!
 				pthread_mutex_lock(&mutex_listaNodos);
 				viejo_nodo->estado = CONECTADO;
 				viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;

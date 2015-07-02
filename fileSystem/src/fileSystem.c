@@ -41,8 +41,7 @@
 #define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
-//#define BLOCK_SIZE 4*1024 //<-4KB               //20*1024*1024 //<-20MB Ahora esta en librería
-#define CANT_COPIAS 3 // cantidad de copias a enviar a los nodos
+#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos XXX
 
 //  Estados del nodo
 enum t_client_type {
@@ -183,6 +182,7 @@ void dir_destroy(struct t_dir*);
 void arch_destroy(struct t_arch*);
 void bloque_destroy(struct t_bloque*);
 void nodo_destroy(struct t_nodo*);
+void nodo_remove(struct t_nodo*);
 void print_path_actual();
 int warning(char*);
 struct t_dir* dir_create(char*, struct t_dir*);
@@ -596,7 +596,6 @@ void hilo_listener() {
 	}
 	pthread_cleanup_push(cleanup,NULL); // Handler de la cancelacion, funciona similar a Try-Catch
 
-
 	if((listener = escucharConexionesDesde("", conf.puerto_listen)) == -1) {
 		log_error(logger, "No se pudo obtener Puerto para Escuchar Clientes");
 		exit(-1);
@@ -642,6 +641,7 @@ void hilo_listener() {
 	}
 
 	pthread_cleanup_pop(0); //Fin del Handler (Try-Catch)
+
 }
 
 //---------------------------------------------------------------------------
@@ -696,8 +696,8 @@ int ningunBloqueBorrado(struct t_arch* archivo) {
 
 //---------------------------------------------------------------------------
 int estaDisponibleElArchivo(struct t_arch* archivo) {
-	return todosLosBloquesDelArchivoDisponibles(archivo)
-			&& ningunBloqueBorrado(archivo);
+	return todosLosBloquesDelArchivoDisponibles(archivo);
+//			&& ningunBloqueBorrado(archivo);
 }
 
 //---------------------------------------------------------------------------
@@ -722,7 +722,7 @@ void preparar_fs () {
 	iniciarMongo();
 	set_root();
 	levantarNodos(listaNodos);
-	//set_kbitarrays_de_nodos_del_dir(root);
+//	set_kbitarrays_de_nodos_del_dir(root); FIXME ... aver aver
 }
 
 //---------------------------------------------------------------------------
@@ -775,10 +775,12 @@ void clean_copies_from_nodo(int ID_nodo){
 	void _delete_copies_in_dir(struct t_dir* dir){
 		void _delete_copies_in_arch(struct t_arch* arch){
 			void _delete_copies_in_bloq(struct t_bloque* block){
-				int _eq_id_nodo(struct t_copia_bloq* copy){
-					return copy->id_nodo == ID_nodo;
+				int _check_id_and_remove(struct t_copia_bloq* copy){
+					int result = copy->id_nodo == ID_nodo;
+//					if(result) eliminarCopia(block,copy); TODO esto no esta implementado
+					return result;
 				}
-				list_remove_and_destroy_by_condition(block->list_copias,(void*) _eq_id_nodo,(void*) copia_bloque_destroy);
+				list_remove_and_destroy_by_condition(block->list_copias,(void*) _check_id_and_remove,(void*) copia_bloque_destroy);
 			}
 			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
 		}
@@ -939,6 +941,13 @@ void nodo_destroy(struct t_nodo* self){
 }
 
 //---------------------------------------------------------------------------
+void nodo_remove(struct t_nodo* self){
+	clean_copies_from_nodo(self->id_nodo);
+	eliminarNodo(self);
+	nodo_destroy(self);
+}
+
+//---------------------------------------------------------------------------
 void copia_bloque_destroy(struct t_copia_bloq* self){
 	struct t_nodo* nodo;
 	nodo = find_nodo_with_ID(self->id_nodo);
@@ -1083,10 +1092,12 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 			if(get_nodo_disp(list_used, &nodo_disp, &index_set)==-1){
 				puts("no hay nodos disponibles");
 				list_destroy(list_used);
+				list_add(*list_blocks,block);
 				return -1;
 			}
 			if (send_block(data,nodo_disp,index_set,block_start,block_end)<=0) {
 				list_destroy(list_used);
+				list_add(*list_blocks,block);
 				return -1;
 			}
 			list_add(list_used, nodo_disp);
@@ -1224,7 +1235,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-//	crearArchivoEn(new_arch,new_arch->parent_dir); TODO
+	crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1458,8 +1469,8 @@ void help(){
 //---------------------------------------------------------------------------
 void format(){
 	if (warning("Esta seguro que desea formatear el MDFS?")) {
+		eliminarDirectorio(root);
 		dir_destroy(root);
-//		eliminarDirectorio(root); TODO
 		set_root();
 	}
 }
@@ -1587,11 +1598,11 @@ void remdir(char* dir_path){
 		}
 		if(dir_is_empty(dir_aux)) {
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
-//			eliminarDirectorio(dir_aux); TODO
+			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
 		} else if(warning("El directorio no esta vacio, desea eliminarlo de todas formas?")) {
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
-//			eliminarDirectorio(dir_aux); TODO
+			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
 		}
 	} else {
@@ -1611,7 +1622,7 @@ void mvdir(char* old_path, char* new_path){
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
-//				moverDirectorio(dir_aux,parent_dir_aux,dir_name); TODO
+				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
 				dir_aux->nombre = dir_name;
@@ -1677,7 +1688,7 @@ int upload(char* local_path, char* mdfs_path, int console){
 				return -1;
 			}
 		} else {
-			if(console) perror("Error abriendo el archivo");
+			if(console) perror("error: no se pudo abrir el archivo");
 			return -1;
 		}
 	} else {
@@ -1722,7 +1733,7 @@ int download(char* arch_path, char* local_path, int console){
 }
 
 //---------------------------------------------------------------------------
-void md5(char* arch_path){
+void md5(char* arch_path){ //TODO
 
 }
 
@@ -1755,6 +1766,7 @@ void blocks(char* arch_path){
 void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra solo una copia o todas
 	int num_block;
 	struct t_arch* arch_aux;
+	struct t_bloque* block;
 	if(num_block_str==NULL){
 		puts("rmblock: falta un numero de bloque como operando");
 	} else if(arch_path==NULL){
@@ -1763,12 +1775,9 @@ void rmblock(char* num_block_str, char* arch_path){//XXX preguntar por si borra 
 		num_block = strtol(num_block_str, NULL, 10);
 		if((arch_aux=get_arch_from_path(arch_path))!=NULL){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
-				eliminarBloque(arch_aux->id_archivo,num_block);
-				int _eq_num(struct t_bloque* blk){
-					return blk->nro_bloq==num_block;
-				}
-				list_remove_and_destroy_by_condition(arch_aux->bloques, (void*) _eq_num, (void*) bloque_destroy);
-
+//				eliminarBloque(arch_aux->id_archivo,num_block);  FIXME modificar, se borran las copias, no el bloque
+				block = find_block_with_num(num_block,arch_aux->bloques);
+				list_clean_and_destroy_elements(block->list_copias, (void*) copia_bloque_destroy);
 			} else {
 				puts("rmblock: no hay ningun bloque con ese numero");
 			}
@@ -1848,49 +1857,56 @@ void lsnode() {
 		pthread_mutex_lock(&mutex_listaNodos);
 		ptr_nodo = list_get(listaNodos, i);
 		pthread_mutex_unlock(&mutex_listaNodos);
-		getpeername(ptr_nodo->socket_FS_nodo, (struct sockaddr*)&peer, &peer_size);
 		printf(" ID: %d\n", ptr_nodo->id_nodo);
-		printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
-		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
-		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
 		if (ptr_nodo->estado==CONECTADO){
+			getpeername(ptr_nodo->socket_FS_nodo, (struct sockaddr*)&peer, &peer_size);
 			printf("  *Estado: CONECTADO\n");
+			printf("  *IP: %s\n", inet_ntoa(peer.sin_addr));
 		} else {
 			printf("  *Estado: DESCONECTADO\n");
 		}
+		printf("  *Cantidad de bloques: %d\n", ptr_nodo->cantidad_bloques);
+		printf("  *Bloques ocupados: %i\n",(int) kbitarray_amount_bits_set(ptr_nodo->bloquesLlenos));
 	}
 }
 
 //---------------------------------------------------------------------------
-void addnode(char* IDstr){  //TODO Hay que persistir ID y CANT_BLOQUES del nodo
+void addnode(char* IDstr){
 	int node_id;
 	struct t_nodo* viejo_nodo;
 
 	if(IDstr!=NULL){
-		node_id = atoi(IDstr);
+		node_id = strtol(IDstr, NULL, 10);
 		int _eq_ID(struct info_nodo* ninf){
-					return ninf->id == node_id;
+			return ninf->id == node_id;
 		}
 		if(any_info_nodo_with_ID(node_id)){
-			struct info_nodo* infnod = list_remove_by_condition(list_info_nodo, (void*) _eq_ID);
-
+			struct info_nodo* infnod = list_find(list_info_nodo, (void*) _eq_ID);
 			viejo_nodo = find_nodo_with_ID(node_id);
-
-			if(viejo_nodo != NULL) { //FIXME!!
-				pthread_mutex_lock(&mutex_listaNodos);
-				viejo_nodo->estado = CONECTADO;
-				viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
-				viejo_nodo->ip_listen = infnod->ip_listen;
-				viejo_nodo->port_listen = infnod->port_listen;
-				viejo_nodo->usando_socket = 0;
+			if(viejo_nodo!=NULL) {
 				if(infnod->nodo_nuevo) {
-					clean_copies_from_nodo(node_id);
-					kbitarray_destroy(viejo_nodo->bloquesLlenos);
-					viejo_nodo->cantidad_bloques = infnod->cant_bloques;
-					viejo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
+					puts("Ya existe un nodo con ese ID");
+				} else {
+					list_remove_by_condition(list_info_nodo, (void*) _eq_ID);
+					pthread_mutex_lock(&mutex_listaNodos);
+					viejo_nodo->estado = CONECTADO;
+					viejo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
+					viejo_nodo->ip_listen = infnod->ip_listen;
+					viejo_nodo->port_listen = infnod->port_listen;
+					viejo_nodo->usando_socket = 0;
+//					if(infnod->nodo_nuevo) {
+//						eliminarNodo(viejo_nodo);
+//						clean_copies_from_nodo(node_id);
+//						kbitarray_destroy(viejo_nodo->bloquesLlenos);
+//						viejo_nodo->cantidad_bloques = infnod->cant_bloques;
+//						viejo_nodo->bloquesLlenos = kbitarray_create_and_clean_all(infnod->cant_bloques);
+//						crearNodo(viejo_nodo);
+//					}
+					pthread_mutex_unlock(&mutex_listaNodos);
+					info_nodo_destroy(infnod);
 				}
-				pthread_mutex_unlock(&mutex_listaNodos);
 			} else {
+				list_remove_by_condition(list_info_nodo, (void*) _eq_ID);
 				struct t_nodo* nuevo_nodo;
 				nuevo_nodo = malloc(sizeof(struct t_nodo));
 					nuevo_nodo->id_nodo = infnod->id;
@@ -1904,8 +1920,9 @@ void addnode(char* IDstr){  //TODO Hay que persistir ID y CANT_BLOQUES del nodo
 				pthread_mutex_lock(&mutex_listaNodos);
 				list_add(listaNodos, nuevo_nodo);
 				pthread_mutex_unlock(&mutex_listaNodos);
+				crearNodo(nuevo_nodo);
+				info_nodo_destroy(infnod);
 			}
-			info_nodo_destroy(infnod);
 
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",node_id);
@@ -1918,16 +1935,15 @@ void addnode(char* IDstr){  //TODO Hay que persistir ID y CANT_BLOQUES del nodo
 //---------------------------------------------------------------------------
 void rmnode(char* IDstr){
 	int ID;
-	int _eq_ID(struct info_nodo* ninf){
-		return ninf->id == ID;
-	}
 	if(IDstr!=NULL){
 		ID = strtol(IDstr, NULL, 10);
 		int result = any_nodo_with_ID(ID);
-
 		if(result){
+			int _eq_ID(struct t_nodo* nodo){
+				return nodo->id_nodo == ID;
+			}
 			pthread_mutex_lock(&mutex_listaNodos);
-			list_remove_and_destroy_by_condition(listaNodos, (void*) _eq_ID, (void*) nodo_destroy);
+			list_remove_and_destroy_by_condition(listaNodos, (void*) _eq_ID, (void*) nodo_remove);
 			pthread_mutex_unlock(&mutex_listaNodos);
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",ID);

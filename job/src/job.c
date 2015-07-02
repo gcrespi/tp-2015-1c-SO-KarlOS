@@ -331,6 +331,10 @@ void esperar_instrucciones_de_MaRTA() {
 			}
 			break;
 
+		case ORDER_PARTIAL_REDUCE:
+
+			break;
+
 		case ORDER_REDUCE:
 
 			//abrir hilo de reduce

@@ -35,5 +35,6 @@
 *.log
 *.dat
 *.*~
-
+*.sh
+*.tmp
 *language.settings.xml

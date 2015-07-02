@@ -28,7 +28,8 @@ enum protocolo {
 	LOST_BLOCK, READ_RESULT_JOB, MARTA_CONNECTION_REQUEST, MARTA_CONNECTION_ACCEPTED, MARTA_CONNECTION_REFUSED,
 	ARCHIVO_INEXISTENTE, EXECUTE_MAP, EXECUTE_REDUCE, REDUCE_OK, TEMP_NOT_FOUND,
 	NODO_LOCATION_REQUEST, NODO_LOCATION, LOST_NODO, SAVE_RESULT_REQUEST,
-	SAVE_OK, SAVE_ABORT, ORDER_PARTIAL_REDUCE
+	SAVE_OK, SAVE_ABORT, ORDER_PARTIAL_REDUCE,
+	TEMPS_NOT_FOUND
 
 };
 
@@ -100,5 +101,7 @@ void* menorSegun(void* elemento1, void* elemento2, int(*criterio)(void*));
 void* foldl(void*(*function)(void*, void*), void* seed, t_list* list);
 void* foldl1(void*(*function)(void*, void*), t_list* list);
 
+void list_remove_element(t_list* self, void* element);
+void list_remove_all_elements_in(t_list* self, t_list* to_be_removed);
 
 #endif /* CONNECTIONLIB_H_ */

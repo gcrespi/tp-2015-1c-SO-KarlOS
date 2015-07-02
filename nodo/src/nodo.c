@@ -254,7 +254,7 @@ void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
 			  exit(-1);
 		  }
 
-		  hilos_de_job++;
+//		  hilos_de_job++;
 //		  } else {
 //			  free_hilo_job(job);
 //		  }
@@ -626,8 +626,9 @@ int realizar_Map(int socket) {
 	int result = 1;
     uint32_t nroBloque;
     uint32_t id;
-    char* pathMap = string_from_format("map_script%i.sh",last_script_increment_and_take());
+    char* pathMap = string_from_format("%s/map_script%i.sh",conf.dir_temp,last_script_increment_and_take());
     char* destino;
+
 
 	result = (result > 0) ? receive_int_in_order(socket, &id) : result;
 	result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
@@ -635,6 +636,8 @@ int realizar_Map(int socket) {
 	result = (result > 0) ? receive_entire_file_by_parts( socket, pathMap, MAX_PART_SIZE) : result;
 
 	if(result > 0) {
+
+		char* destinoCompleto = string_from_format("%s/%s",conf.dir_temp,destino);
 
 		if (id == conf.id){
 
@@ -644,7 +647,7 @@ int realizar_Map(int socket) {
 		puts("Realizando Tarea de map\n");
 		//iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
 							//path de map a aplicar 	              nombre result
-		iniciar_Tarea_Map(pathMap, destino, nroBloque);
+		iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
 		} else puts("No soy yo");
 	} else {
 		log_error(logger,"No se pudo obtener el Map");

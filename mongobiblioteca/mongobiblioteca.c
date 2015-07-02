@@ -6,6 +6,7 @@
 #include <commons/string.h>
 #include "mongobiblioteca.h"
 
+
 /*
  *
  * Directorio = {
@@ -203,7 +204,7 @@ void eliminarDirectorio(struct t_dir* dir){
     printf ("Error: %s\n", error.message);
   }
 
-  mongoc_cursor_destroy (cursor);
+  //mongoc_cursor_destroy (cursor);
   bson_destroy (query);
 }
 
@@ -335,7 +336,7 @@ struct t_bloque * recibirBloqueDeMongo (int idArchivo, int nro_bloq){
 			}
     }
 
-	mongoc_cursor_destroy (cursor);
+	//mongoc_cursor_destroy (cursor);
 	bson_destroy (query);
 	return bloque;
 }
@@ -377,7 +378,7 @@ struct t_arch * recibirArchivoDeMongo (int idArchivo, struct t_dir * directorioP
 		list_add_in_index((archivo->bloques), i, recibirBloqueDeMongo(idArchivo, i));
 	}
 
-	mongoc_cursor_destroy (cursor);
+	//mongoc_cursor_destroy (cursor);
 	bson_destroy (query);
 	return archivo;
 }
@@ -430,8 +431,9 @@ struct t_dir * recibirDirectorioDeMongo (int idDirectorio, struct t_dir * direct
 			}
 	}
 
-	mongoc_cursor_destroy (cursor);
+
 	bson_destroy (query);
+	//mongoc_cursor_destroy (cursor);
 	return directorio;
 }
 
@@ -442,6 +444,7 @@ void iniciarMongo(){
 	directorioCollection = mongoc_client_get_collection (client, "test", "Directorios");
 	archivoCollection = mongoc_client_get_collection (client, "test", "Archivos");
 	bloqueCollection = mongoc_client_get_collection (client, "test", "Bloques");
+	nodoCollection = mongoc_client_get_collection (client, "test", "Nodos");
 }
 
 void cerrarMongo(){
@@ -449,6 +452,8 @@ void cerrarMongo(){
 	mongoc_collection_destroy (archivoCollection);
 	mongoc_collection_destroy (directorioCollection);
 	mongoc_client_destroy (client);
+
+	//mongoc_cleanup ();
 }
 
 struct t_dir * levantarRaizDeMongo(){
@@ -491,6 +496,8 @@ int ultimoIdDirectorio(){
 		}
 	}
 
+	bson_destroy (query);
+	mongoc_cursor_destroy (cursor);
 	return id;
 }
 
@@ -511,6 +518,8 @@ int ultimoIdArchivo(){
 		}
 	}
 
+	bson_destroy (query);
+	mongoc_cursor_destroy (cursor);
 	return id;
 }
 
@@ -554,3 +563,76 @@ void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name
 	bson_destroy (update);
 	bson_destroy (query);
 }
+
+void crearNodo(struct t_nodo * nodo){
+  bson_t *doc;
+  bson_error_t error;
+
+  doc = BCON_NEW("_id", BCON_INT32(nodo->id_nodo),
+		  	  	 "cantidad_bloques", BCON_INT32(nodo->cantidad_bloques)
+				 );
+
+  //Inserto en la coleccion
+  if (!mongoc_collection_insert (nodoCollection, MONGOC_INSERT_NONE, doc, NULL, &error)) {
+      printf ("%s\n", error.message);
+  }
+
+  bson_destroy(doc);
+}
+
+void eliminarNodo(struct t_nodo* nodo){
+  bson_error_t error;
+  bson_t *query;
+
+  /*Busco el nodo*/
+  query = bson_new ();
+  BSON_APPEND_INT32 (query, "_id", nodo->id_nodo);
+  if(!mongoc_collection_count (nodoCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+    printf("Error: No existe el directorio\n");
+    bson_destroy (query);
+    return;
+  }
+
+  /*Borro el nodo*/
+  if (!mongoc_collection_remove (nodoCollection, MONGOC_DELETE_SINGLE_REMOVE, query, NULL, &error)) {
+    printf ("Error: %s\n", error.message);
+  }
+
+  bson_destroy (query);
+}
+
+void levantarNodos(t_list* lista_nodos){
+  struct t_nodo * nodo;
+  bson_t *query;
+  const bson_t * doc;
+  mongoc_cursor_t *cursor;
+  bson_iter_t iter, id_iter;
+
+  /*Busco el nodo*/
+  query = bson_new ();
+  if(!mongoc_collection_count (nodoCollection, MONGOC_QUERY_NONE, query, 0, 0, NULL, NULL)){
+    bson_destroy (query);
+    return;
+  }
+
+  query = bson_new ();
+  cursor = mongoc_collection_find(nodoCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+  while(mongoc_cursor_next (cursor, &doc)){
+	  	nodo = malloc(sizeof(struct t_nodo));
+	    if (bson_iter_init (&iter, doc) &&
+			bson_iter_find_descendant (&iter, "_id", &id_iter)){
+				nodo->id_nodo = bson_iter_int32(&id_iter);
+		}
+		if (bson_iter_init (&iter, doc) &&
+			bson_iter_find_descendant (&iter, "cantidad_bloques", &id_iter)){
+				nodo->cantidad_bloques = bson_iter_int32(&id_iter);
+		}
+		nodo->estado = DESCONECTADO;
+		nodo->bloquesLlenos = kbitarray_create_and_clean_all(nodo->cantidad_bloques);
+		list_add(lista_nodos, nodo);
+  }
+
+  mongoc_cursor_destroy (cursor);
+  bson_destroy (query);
+}
+

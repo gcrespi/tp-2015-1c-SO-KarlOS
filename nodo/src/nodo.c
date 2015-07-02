@@ -445,12 +445,12 @@ int enviar_tmp(int socket) {
 	int result = 1;
     char* nombreArchivo;
     char* path_completo;
-    char *tmp;
+   // char *tmp;
 
 	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &nombreArchivo) : result;
 	path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
 
-	int fd;
+	/*	int fd;
 	struct stat sbuf;
 	log_info(logger, "inicio de mapeo");
 
@@ -468,9 +468,9 @@ int enviar_tmp(int socket) {
 		exit(1);//XXX Acá en vez de mapear usar función nueva que envíe el temporal entero
 	}
 	log_info(logger,"mapeo correcto");
+      */
 
-
-	result = (result > 0) ? send_stream_with_size_in_order(socket, &tmp[0], sbuf.st_size) : result;
+	result = (result > 0) ? send_entire_file_by_parts(socket,path_completo,(4*1024) ) : result;
 	free(path_completo);
 	free(nombreArchivo);
 	return result;
@@ -636,20 +636,13 @@ int realizar_Map(int socket) {
 	result = (result > 0) ? receive_entire_file_by_parts( socket, pathMap, MAX_PART_SIZE) : result;
 
 	if(result > 0) {
-
 		char* destinoCompleto = string_from_format("%s/%s",conf.dir_temp,destino);
-
 		if (id == conf.id){
-
-		// aca tendria que ir una funcion que me convierta el array recibido del job en un
-			//archivo para despues aplicar el map
-
-		puts("Realizando Tarea de map\n");
-		//iniciar_Tarea_Map("/home/utnso/git/ejemplosKarlOS/Ej1/Debug/Ej1",destino, nroBloque);
-							//path de map a aplicar 	              nombre result
-		iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
-		} else puts("No soy yo");
+			log_info(logger, "Realizando tarea de map");
+			iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
+		} else log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
 	} else {
+
 		log_error(logger,"No se pudo obtener el Map");
 	}
 
@@ -688,9 +681,13 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
 
 		int salida;
-		salida= fprintf (archivo,"%s",&data[indice * BLOCK_SIZE]); //XXX faltan semaforos de data
+
+		pthread_mutex_lock( &mutex[indice] );
+		salida= fprintf (archivo,"%s",&data[indice * BLOCK_SIZE]);
+		pthread_mutex_unlock( &mutex[indice] );
+
 		if(salida<0){
-			printf("Error in fprintf\n");
+			log_error(logger,"Error en fprintf");
 			return;
 	      }
 }

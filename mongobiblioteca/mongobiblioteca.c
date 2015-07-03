@@ -56,7 +56,7 @@ void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     BSON_APPEND_INT32 (doc, "numero", (bloqueNuevo->nro_bloq));
 
      bson_append_array_begin (doc, "copias", -1, array);
-    for(i=0; i<2 ; i++){                                //Hardcode en el for
+    for(i=0; i<1 ; i++){                                //Hardcode en el for
     bson_append_document_begin (array, "copias", -1, bloque);
     copia = list_get((bloqueNuevo->list_copias), i);
     BSON_APPEND_INT32 (bloque, "numeroCopia", i);
@@ -239,18 +239,18 @@ void crearArchivoEn(struct t_arch* archivoNuevo, struct t_dir * directorio){
     BSON_APPEND_INT32 (doc, "idDirectorio", (directorio->id_directorio));
     BSON_APPEND_INT32 (doc, "cant_bloq", (archivoNuevo -> cant_bloq));
 
-    void _crearbloques(struct t_bloque* block){
-    	crearBloque(block, archivoNuevo->id_archivo);
-    }
-
-    list_iterate(archivoNuevo->bloques, (void*) _crearbloques);
-
     /*Hago el insert en Archivos*/
     if (!mongoc_collection_insert (archivoCollection, MONGOC_INSERT_NONE, doc, NULL, NULL)) {
         printf ("Error insertando nuevo archivo\n");
         bson_destroy (doc);
         return;
     }
+
+    void _crearbloques(struct t_bloque* block){
+    	crearBloque(block, archivoNuevo->id_archivo);
+    }
+
+    list_iterate(archivoNuevo->bloques, (void*) _crearbloques);
 
     /*Actualizo "hijos" en padre nuevo*/
   	query = BCON_NEW ("_id", BCON_INT32(directorio->id_directorio));
@@ -660,3 +660,35 @@ void levantarNodos(t_list* lista_nodos){
   bson_destroy (query);
 }
 
+void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name){
+	bson_t *query, *update;
+	bson_error_t error;
+
+	/*Actualizo "hijos" en padre nuevo*/
+	query = BCON_NEW ("_id", BCON_INT32(parent_dir->id_directorio));
+	update = BCON_NEW ("$push", "{",
+								 "archivos", BCON_INT32 (arch->id_archivo),
+								 "}");
+	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+		  printf ("%s\n", error.message);
+		  bson_destroy (query);
+		  bson_destroy (update);
+		  return;
+	}
+
+	bson_destroy (update);
+	bson_destroy (query);
+
+
+	/*Actualizo arch*/
+	query = BCON_NEW ("_id", BCON_INT32(arch->id_archivo));
+	update = BCON_NEW ("$set", "{",
+								 "nombre", BCON_UTF8 (new_name),
+								 "}");
+	if (!mongoc_collection_update (archivoCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+		  printf ("%s\n", error.message);
+	}
+
+	bson_destroy (update);
+	bson_destroy (query);
+}

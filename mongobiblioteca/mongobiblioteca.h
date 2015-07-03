@@ -76,5 +76,6 @@ void moverDirectorio(struct t_dir* dir, struct t_dir* parent_dir, char* new_name
 void eliminarNodo(struct t_nodo* nodo);
 void crearNodo(struct t_nodo * nodo);
 void levantarNodos(t_list* lista_nodos);
+void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name);
 
 #endif /* MONGOBIBLIOTECA_H_ */

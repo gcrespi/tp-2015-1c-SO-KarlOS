@@ -1235,7 +1235,8 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-	crearArchivoEn(new_arch,new_arch->parent_dir);
+	printf("%s\n", new_arch->nombre);
+		crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
 	return new_arch;
 }

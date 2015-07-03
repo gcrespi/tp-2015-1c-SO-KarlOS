@@ -120,7 +120,7 @@ void eliminarBloque(int idArchivo, int nroBloque){
   update = BCON_NEW ("$set", "{",
 								"cant_bloq", BCON_INT32 (cant_bloq),
 								"}");
-	if (!mongoc_collection_update (archivoCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+	if (!mongoc_collection_update (archivoCollection, MONGOC_UPDATE_NONE, query_arch, update, NULL,  &error)) {
 		  printf ("%s\n", error.message);
 		  bson_destroy (query);
 		  bson_destroy (query_arch);

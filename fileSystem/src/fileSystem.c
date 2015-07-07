@@ -41,7 +41,7 @@
 #define NORMAL  "\033[0m"
 #define CLEAR "\033[H\033[J"
 #define OFFSET 0
-#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos XXX
+//#define CANT_COPIAS 1 // cantidad de copias a enviar a los nodos XXX está definido en mongobiblioteca
 
 //  Estados del nodo
 enum t_client_type {
@@ -1235,7 +1235,8 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->id_archivo = arch_id_counter;
 		new_arch->cant_bloq = blocks_sent;
 		new_arch->bloques = list_blocks;
-	crearArchivoEn(new_arch,new_arch->parent_dir);
+	printf("%s\n", new_arch->nombre);
+		crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
 	return new_arch;
 }
@@ -1548,7 +1549,7 @@ void mv(char* old_path, char* new_path) {
 		get_info_from_path(new_path, &arch_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_arch_name(arch_name, parent_dir_aux)) {
-//				moverArchivo(arch_aux,parent_dir_aux,arch_name); TODO
+				moverArchivo(arch_aux,parent_dir_aux,arch_name);
 				arch_move(&arch_aux, parent_dir_aux);
 				aux_name = arch_aux->nombre;
 				arch_aux->nombre = arch_name;

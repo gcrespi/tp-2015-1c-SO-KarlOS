@@ -328,7 +328,7 @@ int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length
 	}
 
 	int result;
-	int file_descriptor = NULL;
+	int file_descriptor;
 	file_descriptor = open(src_path, O_RDONLY);
 	if (file_descriptor != -1) {
 		result = send_from_file_by_parts(socket, file_descriptor, max_part_length, stat_file.st_size);
@@ -349,7 +349,7 @@ int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length
 int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_length) {
 
 	int result;
-	int file_descriptor = NULL;
+	int file_descriptor;
 	file_descriptor = creat(dest_path, S_IRWXU);
 	if (file_descriptor != -1) {
 		result = receive_in_file_by_parts(socket, file_descriptor, max_part_length);

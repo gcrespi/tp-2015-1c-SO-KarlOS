@@ -48,16 +48,18 @@ typedef struct {
 } info_new_job;
 
 typedef struct {
-	uint32_t id_map;
+	uint32_t id_reduce;
+	char* temp_file_name;
+	uint32_t id_nodo_host;
+	t_list *list_nodos;
+}t_reduce_dest;
+
+typedef struct {
 	uint32_t id_nodo;
 	uint32_t ip_nodo;
 	uint32_t puerto_nodo;
-	t_list *temp_files_names;
-	t_list *list_nodos;
-	char* temp_file_name;
-
-}t_reduce_dest;
-
+	t_list* path_temps;
+}t_reduce_nodo_dest;
 typedef struct {
 	uint32_t id_reduce;
 	pthread_t *thr;
@@ -202,11 +204,49 @@ void esperar_hilo_map(t_hilo_map* hilo_map) {
 
 
 //---------------------------------------------------------------------------
+int  receive_answer_map(int socket,uint32_t *answer_map) {
+
+	*answer_map = receive_protocol_in_order(socket);
+
+	switch(*answer_map) {
+
+		case MAP_OK:
+			log_debug(paranoid_log, "Se Realizó el Map Correctamente");
+			break;
+
+		case MAP_NOT_OK:
+			log_error(paranoid_log, "No Se pudo realizar el Map");
+			break;
+
+		case INCORRECT_NODO:
+			log_error(paranoid_log, "El nodo conectado no es el Buscado");
+			break;
+
+		case DISCONNECTED:
+			log_error(paranoid_log, "Nodo se Desconectó de forma inesperada");
+			return 0;
+			break;
+
+		case -1:
+			return -1;
+			break;
+
+		default:
+			log_error(paranoid_log, "Protocolo Inesperado %i (Job PANIC!)", *answer_map);
+			return -1;
+			break;
+	}
+
+	return *answer_map;
+}
+
+
+//---------------------------------------------------------------------------
 void hilo_map_job(t_map_dest* map_dest) {
 
 	t_buffer* result_map_buff;
 	char *ip_nodo = from_int_to_inet_addr(map_dest->ip_nodo);
-
+	int result;
 
 	log_info(paranoid_log, "Realizando Operación de Map ID:%i, en Nodo: %i, IP: %s, Port: %i, Block: %i Temp: %s",
 			map_dest->id_map, map_dest->id_nodo, ip_nodo, map_dest->puerto_nodo, map_dest->block,
@@ -214,31 +254,32 @@ void hilo_map_job(t_map_dest* map_dest) {
 
 	int socket_nodo = solicitarConexionConNodo(ip_nodo, map_dest->puerto_nodo, map_dest->id_nodo);
 
-	if(socket_nodo != -1) {
-
-		//XXX Realización del Map aquí
-		if (enviar_infoMap_job(socket_nodo, map_dest) <= 0){
-			log_error(paranoid_log, "No se pudo enviar Instrucciones de Map");
-		}
-		else {
-			log_info(paranoid_log, "Se envio correctamente Instrucciones de Map");
-		}
-
-	}
-
-	pthread_mutex_lock(&conex_marta_ready);
+	result = (socket_nodo != -1) ? enviar_infoMap_job(socket_nodo, map_dest) : -1;
+	uint32_t answer_map = 0;
+	result = (result > 0) ? receive_answer_map(socket_nodo, &answer_map) : result;
 
 	if(socket_nodo != -1) {
-		result_map_buff = buffer_create_with_protocol(MAP_OK);
-		buffer_add_int(result_map_buff,map_dest->id_map);
-		send_buffer_and_destroy(socket_marta,result_map_buff);
+		if(result > 0) {
+			if(answer_map == INCORRECT_NODO) {
+				result_map_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
+			} else {
+				result_map_buff = buffer_create_with_protocol(answer_map);
+			}
+
+		} else {
+			result_map_buff = buffer_create_with_protocol(ERROR_IN_CONNECTION);
+		}
 	} else {
 		result_map_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
-		buffer_add_int(result_map_buff,map_dest->id_map);
-		send_buffer_and_destroy(socket_marta,result_map_buff);
 	}
-
+	buffer_add_int(result_map_buff,map_dest->id_map);
+	pthread_mutex_lock(&conex_marta_ready);
+	result = send_buffer_and_destroy(socket_marta,result_map_buff);
 	pthread_mutex_unlock(&conex_marta_ready);
+
+	if(result <= 0) {
+		log_error(paranoid_log,"No se pudo enviar respuesta de Map a MaRTA");
+	}
 
 	free(ip_nodo);
 	free_map_dest(map_dest);
@@ -257,8 +298,14 @@ int enviar_infoMap_job(int socket_job,t_map_dest* map_dest){
 	buffer_add_string(map_to_Nodo_buff, map_dest->temp_file_name);
 	result = send_buffer_and_destroy(socket_job, map_to_Nodo_buff);
 
-	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_map, (4*1024)) : result;
+	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_map, MAX_PART_SIZE) : result;
 
+
+	if(result<= 0) {
+		log_error(paranoid_log, "No se pudo enviar Instrucciones de Map");
+	} else {
+		log_info(paranoid_log, "Se envio correctamente Instrucciones de Map");
+	}
 
 	return result;
 }
@@ -283,6 +330,39 @@ int enviar_infoReduce_job(int socket_job,t_reduce_dest* map_dest){
 	return 0;
 }
 
+//---------------------------------------------------------------------------}
+void free_reduce_nodo_dest(t_reduce_nodo_dest* self) {
+	list_destroy_and_destroy_elements(self->path_temps, (void *) free);
+	free(self);
+}
+
+//---------------------------------------------------------------------------}
+void free_reduce_dest(t_reduce_dest* self) {
+	free(self->temp_file_name);
+	list_destroy_and_destroy_elements(self->list_nodos, (void *) free_reduce_nodo_dest);
+	free(self);
+}
+
+//---------------------------------------------------------------------------}
+void mostrar_paths(char* self) {
+	log_debug(paranoid_log, "		%s",self);
+}
+
+//---------------------------------------------------------------------------}
+void mostrar_reduce_nodo_dest(t_reduce_nodo_dest* self) {
+	char* ip = from_int_to_inet_addr(self->ip_nodo);
+	log_debug(paranoid_log, "	Nodo: ID: %i, Ip: %s, Puerto: %i ",self->id_nodo, ip, self->puerto_nodo);
+	free(ip);
+
+	list_iterate(self->path_temps, (void *) mostrar_paths);
+}
+
+//---------------------------------------------------------------------------}
+void mostrar_reduce_dest(t_reduce_dest* self) {
+	log_debug(paranoid_log, "Reduce ID: %i, path_temp_result: %s ID NODO HOST: %i", self->id_reduce, self->temp_file_name, self->id_nodo_host);
+	list_iterate(self->list_nodos, (void *) mostrar_reduce_nodo_dest);
+}
+
 //---------------------------------------------------------------------------
 void esperar_instrucciones_de_MaRTA() {
 
@@ -290,7 +370,6 @@ void esperar_instrucciones_de_MaRTA() {
 	int finished = 0, error = 0;
 	t_hilo_map* hilo_map;
 	t_map_dest* map_dest;
-	//t_reduce_dest* reduce_dest;
 	t_list* hilos_map = list_create();
 	//char *pathMapFile = conf->path_map;
 
@@ -302,6 +381,8 @@ void esperar_instrucciones_de_MaRTA() {
 		uint32_t nodes_amount = 0;
 		int result = 1;
 		uint32_t id_nodo_host;
+		uint32_t amount_files_in_node = 0;
+		t_reduce_dest* reduce_dest;
 
 		prot = receive_protocol_in_order(socket_marta);
 
@@ -331,13 +412,43 @@ void esperar_instrucciones_de_MaRTA() {
 			}
 			break;
 
+		case ORDER_PARTIAL_REDUCE:
+			reduce_dest = malloc(sizeof(t_reduce_dest));
+
+			result = receive_int_in_order(socket_marta, &(reduce_dest->id_reduce));
+			result = (result > 0) ? receive_dinamic_array_in_order(socket_marta, (void **) &(reduce_dest->temp_file_name)) : result;
+			reduce_dest->list_nodos = list_create();
+
+			t_reduce_nodo_dest* reduce_nodo_dest = malloc(sizeof(t_reduce_nodo_dest));
+			result = (result > 0) ? receive_int_in_order(socket_marta, &(reduce_nodo_dest->id_nodo)) : result;
+			result = (result > 0) ? receive_int_in_order(socket_marta, &(reduce_nodo_dest->ip_nodo)) : result;
+			result = (result > 0) ? receive_int_in_order(socket_marta, &(reduce_nodo_dest->puerto_nodo)) : result;
+			result = (result > 0) ? receive_int_in_order(socket_marta, &amount_files_in_node) : result;
+
+			reduce_dest->id_nodo_host = reduce_nodo_dest->id_nodo;
+
+			reduce_nodo_dest->path_temps = list_create();
+			int i,j;
+			for(i=0; i<amount_files_in_node; i++) {
+				char* path_temp;
+				result = (result > 0) ? receive_dinamic_array_in_order(socket_marta, (void **) &path_temp) : result;
+				list_add(reduce_nodo_dest->path_temps, path_temp);
+			}
+
+			list_add(reduce_dest->list_nodos, reduce_nodo_dest);
+
+			mostrar_reduce_dest(reduce_dest);
+
+			free_reduce_dest(reduce_dest);
+			break;
+
 		case ORDER_REDUCE:
 
 			//abrir hilo de reduce
-			//reduce_dest = malloc(sizeof(t_reduce_dest));
-			//Falta desarrollar instrucciones de reduce.
 
 			//XXX abrir hilo de reduce
+
+
 			result = (result > 0)? receive_int_in_order(socket_marta, &id_reduce) : result;
 			result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path_temp_result) : result;
 			result = (result > 0)? receive_int_in_order(socket_marta, &id_nodo_host) : result;
@@ -347,7 +458,7 @@ void esperar_instrucciones_de_MaRTA() {
 				log_info(paranoid_log, "Realizando Operación de Reduce ID: %i, Result: %s, ID Nodo Host: %i, Cantidad Nodos: %i",
 						id_reduce, path_temp_result, id_nodo_host, nodes_amount);
 			}
-			int i,j;
+
 			free(path_temp_result);
 
 			for(i=0; (i<nodes_amount) && (result > 0); i++) {

@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
 #include <semaphore.h>
 #include "../../connectionlib/connectionlib.h"
 
@@ -70,7 +71,7 @@ typedef struct {
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
-//#define BLOCK_SIZE 4*1024 // tamaño de cada bloque del dat
+
 t_log* logger;
 sem_t semaforo1;
 sem_t semaforo2;
@@ -113,6 +114,8 @@ void escribir_Sobre_Archivo(FILE *, uint32_t);
 //Main####################################################################################################
 int main(void) {
 	int socket_fs,listener_job;
+
+	 signal(SIGPIPE, SIG_IGN);
 
 	t_list* lista_jobs;
 
@@ -383,7 +386,7 @@ int esperar_instrucciones_job(int *socket_job){
 		tarea = receive_protocol_in_order(*socket_job);
 		switch (tarea) {
 		case EXECUTE_MAP:
-			if (realizar_Map(*socket_job) <=0) {//XXX Aca debe ir la función encargada de realizar el map
+			if (realizar_Map(*socket_job) <=0) {
 				log_error(logger, "no se pudo realizar rutina de map");
 			}
 			else {
@@ -622,7 +625,7 @@ uint32_t last_script_increment_and_take() {
 
 //----------------------------------------------------------------------------
 int realizar_Map(int socket) {
-	//signal(SIGPIPE, sigpipe_f);
+
 	int result = 1;
     uint32_t nroBloque;
     uint32_t id;
@@ -635,13 +638,19 @@ int realizar_Map(int socket) {
 	result = (result > 0) ? receive_entire_file_by_parts( socket, pathMap, MAX_PART_SIZE) : result;
 
 	if(result > 0) {
-
 		if (id == conf.id){
-		log_info(logger, "Realizando tarea de map");
-		iniciar_Tarea_Map(pathMap, destino, nroBloque);
-		} else log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+			log_info(logger, "Realizando tarea de map");
+			result = iniciar_Tarea_Map(pathMap, destino, nroBloque);
+			if(result > 0) {
+				send_protocol_in_order(socket, MAP_OK);
+			} else {
+				send_protocol_in_order(socket, MAP_NOT_OK);
+			}
+		} else {
+			log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+			send_protocol_in_order(socket,INCORRECT_NODO);
+		}
 	} else {
-
 		log_error(logger,"No se pudo obtener el Map");
 	}
 
@@ -670,10 +679,10 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBl
 	}
 	else
 	{
-		printf("No se pudo ejecutar el programa!");
+		log_error(logger,"No se pudo ejecutar el programa!");
 		return -1;
 	}
-	return 0;
+	return 1;
 }
 //----------------------------------------------------------------------------
 void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
@@ -686,7 +695,6 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 		pthread_mutex_unlock( &mutex[indice] );
 
 		if(salida<0){
-			log_error(logger,"Error en fprintf");
 			return;
 	      }
 }

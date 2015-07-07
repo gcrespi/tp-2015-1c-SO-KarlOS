@@ -893,8 +893,16 @@ int receive_result_map(int sockjob, t_result_map* result_map) {
 		log_info(paranoid_log, "Map Realizado con Exito");
 		break;
 
+	case MAP_NOT_OK:
+		log_error(paranoid_log, "No se Realizo el Map");
+		break;
+
 	case NODO_NOT_FOUND:
 		log_warning(paranoid_log, "No se encontró el NODO donde mapear");
+		break;
+
+	case ERROR_IN_CONNECTION:
+		log_error(paranoid_log, "Error con la conexion job nodo");
 		break;
 
 	case DISCONNECTED:
@@ -1052,7 +1060,7 @@ int plan_maps(t_info_job info_job, t_list* file_list, t_list* temps_nodo, int so
 				remove_pending_map(pending_maps, result_map.id_map, temps_nodo);
 				break;
 
-			case NODO_NOT_FOUND:
+			case NODO_NOT_FOUND: case MAP_NOT_OK: case ERROR_IN_CONNECTION:
 				pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
 
 				result = update_nodo_location(pending_map->map_dest->id_nodo);

@@ -243,7 +243,7 @@ void hilo_map_job(t_map_dest* map_dest) {
 			} else {
 				result_map_buff = buffer_create_with_protocol(answer_map);
 			}
-
+			close(socket_nodo);//XXX TESTME
 		} else {
 			result_map_buff = buffer_create_with_protocol(ERROR_IN_CONNECTION);
 		}
@@ -280,7 +280,11 @@ void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 	int socket_nodo = solicitarConexionConNodo(ip_nodo, nodo_host->puerto_nodo, nodo_host->id_nodo);
 
 	result = (socket_nodo != -1) ? enviar_infoReduce_job(socket_nodo, reduce_dest, nodo_host) : -1;
-//	uint32_t answer_map = 0;
+
+	if((socket_nodo != -1) && (result > 0)) {
+		close(socket_nodo);//XXX TESTME
+	}
+	//	uint32_t answer_map = 0;
 //	result = (result > 0) ? receive_answer_map(socket_nodo, &answer_map) : result;
 
 	//XXX enviar verdadera respuesta
@@ -290,7 +294,10 @@ void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 		buffer_add_int(reduce_result_buff, reduce_dest->id_nodo_host);
 	}
 
+	pthread_mutex_lock(&conex_marta_ready);
 	result = (result > 0) ? send_buffer_and_destroy(socket_marta, reduce_result_buff) : result;
+	pthread_mutex_unlock(&conex_marta_ready);
+
 
 	free(ip_nodo);
 	free_reduce_nodo_dest(nodo_host);

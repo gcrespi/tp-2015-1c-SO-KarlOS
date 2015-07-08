@@ -47,23 +47,21 @@ void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     }
 
     /*Creo el documento*/
+	bloque = bson_new();
     doc = bson_new();
     array = bson_new();
-    bloque = bson_new();
-
 
     BSON_APPEND_INT32 (doc, "idArchivo", idArchivo);
     BSON_APPEND_INT32 (doc, "numero", (bloqueNuevo->nro_bloq));
 
-     bson_append_array_begin (doc, "copias", -1, array);
+    bson_append_array_begin (doc, "copias", -1, array);
     for(i=0; i<CANT_COPIAS ; i++){
-    bson_append_document_begin (array, "copias", -1, bloque);
-    copia = list_get((bloqueNuevo->list_copias), i);
-    BSON_APPEND_INT32 (bloque, "numeroCopia", i);
-    BSON_APPEND_INT32 (bloque, "nodo", (copia->id_nodo));
-    BSON_APPEND_INT32 (bloque, "bloque", (copia->bloq_nodo));
-
-    bson_append_document_end (array,bloque);
+    	bson_append_document_begin (array, "copias", -1, bloque);
+		copia = list_get((bloqueNuevo->list_copias), i);
+		BSON_APPEND_INT32 (bloque, "numeroCopia", i);
+		BSON_APPEND_INT32 (bloque, "nodo", (copia->id_nodo));
+		BSON_APPEND_INT32 (bloque, "bloque", (copia->bloq_nodo));
+		bson_append_document_end (array,bloque);
     }
     bson_append_array_end (doc, array);
 
@@ -72,15 +70,15 @@ void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     if (!mongoc_collection_insert (bloqueCollection, MONGOC_INSERT_NONE, doc, NULL, NULL)) {
         printf ("Error insertando nuevo bloque\n");
         bson_destroy (query);
+    	bson_destroy (bloque);
         bson_destroy (array);
-        bson_destroy (bloque);
         bson_destroy (doc);
         return;
     }
 
+	bson_destroy (bloque);
     bson_destroy (query);
     bson_destroy (array);
-    bson_destroy (bloque);
     bson_destroy (doc);
 }
 
@@ -241,6 +239,7 @@ void eliminarDirectorio(struct t_dir* dir){
         bson_iter_recurse (&iter, &sub_iter)) {
             while (bson_iter_next (&sub_iter)) {
                 directorio.id_directorio = (int) bson_iter_int32(&sub_iter);
+                directorio.parent_dir = dir;
             	eliminarDirectorio(&directorio);
             }
     }
@@ -682,6 +681,8 @@ void levantarNodos(t_list* lista_nodos){
 		}
 		nodo->estado = DESCONECTADO;
 		nodo->bloquesLlenos = kbitarray_create_and_clean_all(nodo->cantidad_bloques);
+		nodo->usando_socket = 0;
+		nodo->socket_FS_nodo = 0;
 		list_add(lista_nodos, nodo);
   }
 

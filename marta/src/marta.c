@@ -1670,7 +1670,7 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 			}
 		}
 
-
+//XXX si ya quedaron todos en uno saltearse ultimo reduce?
 		result = plan_final_reduce(info_job, temps_nodo, sockjob, final_result, unmapped_blocks, &last_id_reduce);
 
 		if(result == 1) {
@@ -1687,7 +1687,6 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 		return -1;
 	}
 
-	log_debug(paranoid_log,"Listo para Reduce Final Job ID: %i",info_job.id_job);
 	return 1;
 }
 

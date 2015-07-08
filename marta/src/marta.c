@@ -1357,9 +1357,24 @@ void compute_lost_maps(t_list* unmapped_blocks, t_list* lost_temps) {
 }
 
 //---------------------------------------------------------------------------
-int receive_reduced_paths(t_list** reduced_paths) {
-	*reduced_paths = list_create();//XXX MOCKEADO
-	return 1;
+int receive_reduced_paths(int sockjob, t_list** reduced_paths) {
+	*reduced_paths = list_create();
+	int result;
+	uint32_t amount_paths;
+	int i;
+	result = receive_int_in_order(sockjob, &amount_paths);
+
+	for(i=0; (i<amount_paths) && (result > 0); i++) {
+		char* path;
+		result = receive_dinamic_array_in_order(sockjob,(void **) &path);
+		if(result > 0) {
+			list_add(*reduced_paths, path);
+		} else {
+			free(path);
+		}
+	}
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -1626,7 +1641,7 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 									"No se Encontraron todos los temporales para realizar el Reduce en Nodo ID: %i, Replanificando...",
 									result_reduce.id_nodo);
 
-							result = receive_reduced_paths(&reduced_paths);
+							result = receive_reduced_paths(sockjob, &reduced_paths);
 							if(result > 0) {
 								if(list_size(reduced_paths)>0) {
 									new_temp = create_temp_with_reduced_orphans(pending_reduces, result_reduce.id_nodo, temp_nodo, reduced_paths);
@@ -1681,41 +1696,23 @@ int plan_unique_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_f
 
 	uint32_t last_id_reduce = 0;
 
-	uint32_t nodes_amount = list_size(temps_nodo);
-	if(nodes_amount == 0) {
-		log_error(paranoid_log,"No se puede Realizar Reduce de 0 Nodos!!!");
-		return -1;
-	}
-
-	final_result->id_nodo = id_from_nodo_host(temps_nodo);
-	final_result->file_name = string_from_format("final_result_job_%i.tmp",info_job.id_job);
-
-	log_info(paranoid_log,"Comienzo Unique Reduce con resultado en Nodo: %i, Temp: %s",final_result->id_nodo, final_result->file_name);
-
-	t_buffer* order_reduce_buff = buffer_create_with_protocol(ORDER_REDUCE);
-	buffer_add_int(order_reduce_buff,++(last_id_reduce));
-	buffer_add_string(order_reduce_buff,final_result->file_name);
-	buffer_add_int(order_reduce_buff, final_result->id_nodo);
-	buffer_add_int(order_reduce_buff, nodes_amount);
-
+	int final_reduce_success= 0;
 	int result = 1;
+	t_list* unmapped_blocks = list_create();
 
-	void _buffer_add_temp_node(t_temp_nodo* temp_nodo) {
-		result = (result > 0) ? buffer_add_temp_node(order_reduce_buff, temp_nodo) : result;
+	while((!final_reduce_success)&&(result > 0)) {
+		if(!list_is_empty(unmapped_blocks)) {
+			result = plan_maps(info_job, unmapped_blocks, temps_nodo, sockjob);
+		}
+
+		result = plan_final_reduce(info_job, temps_nodo, sockjob, final_result, unmapped_blocks, &last_id_reduce);
+
+		if(result == 1) {
+			final_reduce_success = 1;
+		}
 	}
-	list_iterate(temps_nodo, (void *) _buffer_add_temp_node);
 
-	result =  (result > 0) ? send_buffer_and_destroy(sockjob,order_reduce_buff) : result;
-
-	if(result < 0) {
-		log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce al Job");
-		free_final_result(final_result);
-		return -1;
-	}
-
-	//result = (result > 0)? receive_result_reduce() : result; XXX recibir resultado operacion
-
-	log_info(paranoid_log, "Reduce Efectuado con Exito!");
+	list_destroy_and_destroy_elements(unmapped_blocks,(void *) free_src_block);
 
 	return 1;
 }
@@ -1772,7 +1769,7 @@ int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result) 
 	result = (result > 0) ? receive_save_result(socket_fs, info_job.path_result) : result;
 	pthread_mutex_unlock(&conex_fs_ready);
 
-	return 1;//result;XXX
+	return result;
 }
 
 //---------------------------------------------------------------------------

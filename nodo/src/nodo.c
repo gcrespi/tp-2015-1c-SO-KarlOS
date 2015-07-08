@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
 #include <semaphore.h>
 #include "../../connectionlib/connectionlib.h"
 
@@ -70,7 +71,7 @@ typedef struct {
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
-//#define BLOCK_SIZE 4*1024 // tamaño de cada bloque del dat
+
 t_log* logger;
 sem_t semaforo1;
 sem_t semaforo2;
@@ -113,6 +114,8 @@ void escribir_Sobre_Archivo(FILE *, uint32_t);
 //Main####################################################################################################
 int main(void) {
 	int socket_fs,listener_job;
+
+	 signal(SIGPIPE, SIG_IGN);
 
 	t_list* lista_jobs;
 
@@ -383,7 +386,7 @@ int esperar_instrucciones_job(int *socket_job){
 		tarea = receive_protocol_in_order(*socket_job);
 		switch (tarea) {
 		case EXECUTE_MAP:
-			if (realizar_Map(*socket_job) <=0) {//XXX Aca debe ir la función encargada de realizar el map
+			if (realizar_Map(*socket_job) <=0) {
 				log_error(logger, "no se pudo realizar rutina de map");
 			}
 			else {
@@ -445,30 +448,14 @@ int enviar_tmp(int socket) {
 	int result = 1;
     char* nombreArchivo;
     char* path_completo;
-   // char *tmp;
 
 	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &nombreArchivo) : result;
 	path_completo = string_from_format("%s/%s",conf.dir_temp,nombreArchivo);
 
-	/*	int fd;
-	struct stat sbuf;
-	log_info(logger, "inicio de mapeo");
+	struct stat stat_file;
+	if( stat(path_completo, &stat_file) == -1) {
 
-	if ((fd = open(path_completo, O_RDWR)) == -1) {
-		perror("open()");
-		exit(1);
 	}
-	if (fstat(fd, &sbuf) == -1) {
-		perror("fstat()");
-	}
-	tmp = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-			fd, 0);
-	if (tmp == (caddr_t) (-1)) {
-		perror("mmap");
-		exit(1);//XXX Acá en vez de mapear usar función nueva que envíe el temporal entero
-	}
-	log_info(logger,"mapeo correcto");
-      */
 
 	result = (result > 0) ? send_entire_file_by_parts(socket,path_completo,(4*1024) ) : result;
 	free(path_completo);
@@ -622,7 +609,7 @@ uint32_t last_script_increment_and_take() {
 
 //----------------------------------------------------------------------------
 int realizar_Map(int socket) {
-	//signal(SIGPIPE, sigpipe_f);
+
 	int result = 1;
     uint32_t nroBloque;
     uint32_t id;
@@ -639,10 +626,18 @@ int realizar_Map(int socket) {
 		char* destinoCompleto = string_from_format("%s/%s",conf.dir_temp,destino);
 		if (id == conf.id){
 			log_info(logger, "Realizando tarea de map");
-			iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
-		} else log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+			result = iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
+			if(result > 0) {
+				send_protocol_in_order(socket, MAP_OK);
+			} else {
+				send_protocol_in_order(socket, MAP_NOT_OK);
+			}
+		} else {
+			log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+			send_protocol_in_order(socket,INCORRECT_NODO);
+		}
+		free(destinoCompleto);
 	} else {
-
 		log_error(logger,"No se pudo obtener el Map");
 	}
 
@@ -671,10 +666,10 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBl
 	}
 	else
 	{
-		printf("No se pudo ejecutar el programa!");
+		log_error(logger,"No se pudo ejecutar el programa!");
 		return -1;
 	}
-	return 0;
+	return 1;
 }
 //----------------------------------------------------------------------------
 void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
@@ -687,7 +682,6 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 		pthread_mutex_unlock( &mutex[indice] );
 
 		if(salida<0){
-			log_error(logger,"Error en fprintf");
 			return;
 	      }
 }

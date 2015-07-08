@@ -592,6 +592,14 @@ int receive_result_map(int sockjob, t_result_map* result_map) {
 		log_info(paranoid_log, "Map Realizado con Exito");
 		break;
 
+	case MAP_NOT_OK:
+		log_error(paranoid_log, "No se Realizo el Map");
+		break;
+
+	case ERROR_IN_CONNECTION:
+		log_error(paranoid_log, "Error con la conexion job nodo");
+		break;
+
 	case NODO_NOT_FOUND:
 		log_warning(paranoid_log, "No se encontró el NODO donde mapear");
 		break;
@@ -1122,7 +1130,7 @@ int plan_maps(t_info_job info_job, t_list* unmapped_blocks, t_list* temps_nodo, 
 					remove_pending_map(pending_maps, result_map.id_map, temps_nodo, unmapped_blocks);
 					break;
 
-				case NODO_NOT_FOUND:
+				case NODO_NOT_FOUND: case MAP_NOT_OK: case ERROR_IN_CONNECTION:
 					pending_map = list_find(pending_maps, (void *) _isSearchedPendingMap);
 
 					int found;
@@ -1149,7 +1157,7 @@ int receive_result_reduce(int sockjob, t_result_reduce* result_reduce) { //XXX
 
 	switch (result_reduce->prot) {
 	case REDUCE_OK:
-		log_info(paranoid_log, "Map Realizado con Exito");
+		log_info(paranoid_log, "Reduce Realizado con Exito");
 		break;
 
 	case NODO_NOT_FOUND:
@@ -1268,8 +1276,9 @@ int order_partial_reduce(t_info_job info_job, t_temp_nodo* temp_nodo, int sockjo
 
 	list_iterate(temp_nodo->orphan_temps, (void *) _buffer_add_temp);
 
-//	result = send_buffer_and_destroy(sockjob,order_reduce_buff);
-	buffer_destroy(order_reduce_buff);
+	log_info(paranoid_log,"Enviando Orden de Reduce Parcial Nodo ID:%i, Nombre Temporal: %s",temp_nodo->id_nodo, partial_name);
+
+	result = send_buffer_and_destroy(sockjob,order_reduce_buff);
 
 	if (result <= 0) {
 		log_error(paranoid_log, "No se Pudo enviar la Orden de Reduce Parcial al Job");
@@ -1404,6 +1413,8 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 		return pending_reduce->id_nodo == result_reduce.id_nodo;
 	}
 
+	log_debug(paranoid_log,"Comenzando Reduces Combinados Job ID: %i",info_job.id_job);
+
 	while((result > 0) && (!readyToFinalReduce(unmapped_blocks, temps_nodo))) {
 		if(!list_is_empty(unmapped_blocks)) {
 			result = plan_maps(info_job, unmapped_blocks, temps_nodo, sockjob);
@@ -1501,11 +1512,20 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 		}
 	}
 
+
+
 	list_destroy_and_destroy_elements(unmapped_blocks,(void *) free_src_block);
 	list_destroy_and_destroy_elements(pending_reduces,(void *) free_pending_reduce);
 
 	final_result->id_nodo = id_from_nodo_host(temps_nodo);
 	final_result->file_name = string_from_format("final_result_job_%i.tmp",info_job.id_job);//XXX
+
+	if(result <= 0) {
+		log_error(paranoid_log,"Fallo operación de Reduces Parciales");
+		return -1;
+	}
+
+	log_debug(paranoid_log,"Listo para Reduce Final Job ID: %i",info_job.id_job);
 	return 1;
 }
 
@@ -1605,8 +1625,7 @@ int save_result_file_in_MDFS(t_info_job info_job, t_final_result* final_result) 
 	result = (result > 0) ? receive_save_result(socket_fs, info_job.path_result) : result;
 	pthread_mutex_unlock(&conex_fs_ready);
 
-
-	return 1;
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -1639,7 +1658,7 @@ void hilo_conex_job(t_hilo_job *job) {
 	} else {
 		result = (result > 0) ? plan_unique_reduce(info_job, temps_nodo, job->sockfd, &final_result) : result;
 	}
-	result = (result > 0) ? save_result_file_in_MDFS(info_job, &final_result) : result;
+//	result = (result > 0) ? save_result_file_in_MDFS(info_job, &final_result) : result;
 
 	if (result > 0) {
 		send_finished_job(job->sockfd);

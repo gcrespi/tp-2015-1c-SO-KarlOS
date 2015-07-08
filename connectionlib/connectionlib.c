@@ -320,22 +320,25 @@ int receive_in_file_by_parts(int socket, int fd, size_t max_part_length) {
 
 //---------------------------------------------------------------------------
 int send_entire_file_by_parts(int socket, char* src_path, size_t max_part_length) {
+	int result;
 
 	struct stat stat_file;
 	if( stat(src_path, &stat_file) == -1) {
-		mostrar_error(-1, "Error while stat");
-		return -1;
+		mostrar_error(-2, "Error while stat");
+		result = send_protocol_in_order(socket, ERROR_WITH_FILE);
+		return (result > 0) ? -2 : result;
 	}
 
-	int result;
 	int file_descriptor;
 	file_descriptor = open(src_path, O_RDONLY);
 	if (file_descriptor != -1) {
-		result = send_from_file_by_parts(socket, file_descriptor, max_part_length, stat_file.st_size);
+		result = send_protocol_in_order(socket, HERE_COMES_FILE);
+		result = (result > 0) ? send_from_file_by_parts(socket, file_descriptor, max_part_length, stat_file.st_size) : result;
 		close(file_descriptor);
 	} else {
 		mostrar_error(-2, "Error opening file");
-		return -2;
+		result = send_protocol_in_order(socket, ERROR_WITH_FILE);
+		return (result > 0) ? -2 : result;
 	}
 
 	if(result <= 0) {
@@ -350,6 +353,21 @@ int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_le
 
 	int result;
 	int file_descriptor;
+
+	result = receive_protocol_in_order(socket);
+
+	if(result <= 0) {
+		return result;
+	}
+
+	if(result == ERROR_WITH_FILE) {
+		return -2;
+	}
+
+	if(result != HERE_COMES_FILE) {
+		return -2;
+	}
+
 	file_descriptor = creat(dest_path, S_IRWXU);
 	if (file_descriptor != -1) {
 		result = receive_in_file_by_parts(socket, file_descriptor, max_part_length);

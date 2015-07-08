@@ -371,7 +371,6 @@ void esperar_instrucciones_de_MaRTA() {
 	t_hilo_map* hilo_map;
 	t_map_dest* map_dest;
 	t_list* hilos_map = list_create();
-	//char *pathMapFile = conf->path_map;
 
 	log_debug(paranoid_log, "Me Pongo a disposición de Ordenes de MaRTA");
 
@@ -437,17 +436,19 @@ void esperar_instrucciones_de_MaRTA() {
 
 			list_add(reduce_dest->list_nodos, reduce_nodo_dest);
 
-			mostrar_reduce_dest(reduce_dest);
+			if(result > 0) {
+				mostrar_reduce_dest(reduce_dest);
 
+				t_buffer* reduce_result_buff = buffer_create_with_protocol(REDUCE_OK);
+
+				buffer_add_int(reduce_result_buff, reduce_dest->id_nodo_host);
+				result = (result > 0) ? send_buffer_and_destroy(socket_marta, reduce_result_buff) : result;
+			}
 			free_reduce_dest(reduce_dest);
 			break;
 
 		case ORDER_REDUCE:
-
-			//abrir hilo de reduce
-
 			//XXX abrir hilo de reduce
-
 
 			result = (result > 0)? receive_int_in_order(socket_marta, &id_reduce) : result;
 			result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path_temp_result) : result;
@@ -482,12 +483,9 @@ void esperar_instrucciones_de_MaRTA() {
 				}
 
 				for(j=0; (j< amount_files_in_node)  && (result > 0); j++) {
-//					uint32_t id_temp;
 					char* path;
 
-//					result = (result > 0)? receive_int_in_order(socket_marta, &id_temp) : result;
 					result = (result > 0)? receive_dinamic_array_in_order(socket_marta,(void **) &path) : result;
-
 					if(result > 0) {
 						log_info(paranoid_log, "Path: %s",path);
 					}
@@ -495,6 +493,8 @@ void esperar_instrucciones_de_MaRTA() {
 				}
 			}
 
+//			t_buffer* final_reduce_result_buff = buffer_create_with_protocol(REDUCE_OK);
+			result = (result > 0)? send_protocol_in_order(socket_marta, REDUCE_OK) : result;
 			break;
 
 		case FINISHED_JOB:

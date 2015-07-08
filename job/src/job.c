@@ -346,6 +346,8 @@ int enviar_infoReduce_job(int socket_job,t_reduce_dest* reduce_dest, t_reduce_no
 		buffer_add_int(reduce_to_Nodo_buff, nodo_guest->ip_nodo);
 		buffer_add_int(reduce_to_Nodo_buff, nodo_guest->puerto_nodo);
 
+		buffer_add_int(reduce_to_Nodo_buff, list_size(nodo_guest->path_temps));
+
 		list_iterate(nodo_guest->path_temps, (void *) _buffer_add_path);
 	}
 	list_iterate(reduce_dest->list_nodos, (void *) _buffer_add_nodo_guest);

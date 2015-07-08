@@ -34,7 +34,7 @@ libconnectionlib.a: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(ARCHIVES) libconnectionlib.a
+	-$(RM) $(ARCHIVES)$(OBJS)$(C_DEPS) libconnectionlib.a
 	-@echo ' '
 
 .PHONY: all clean dependents

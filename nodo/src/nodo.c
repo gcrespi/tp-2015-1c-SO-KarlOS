@@ -68,6 +68,13 @@ typedef struct {
 	struct sockaddr_in socketaddr_cli;
 } t_hilo_job;
 
+typedef struct {
+	uint32_t id_nodo;
+	uint32_t ip_nodo;
+	uint32_t puerto_nodo;
+	t_list* path_temps;
+}t_reduce_nodo_dest;
+
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
@@ -103,12 +110,14 @@ int receive_new_client_job();
 void free_hilo_job(t_hilo_job* job);
 void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
 //void terminar_hilos();
-void solicitarConexionConNodo(int *);
+int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo);
 int obtener_puerto_job();
 void obtener_hilos_jobs(int, t_list*);
 int realizar_Map(int);
+int realizar_Reduce(int);
 int iniciar_Tarea_Map(char *,char *, uint32_t);
 void escribir_Sobre_Archivo(FILE *, uint32_t);
+void free_reduce_nodo_dest(t_reduce_nodo_dest* self);
 
 
 //Main####################################################################################################
@@ -284,9 +293,6 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 	return socketFS;
 }
 //----------------------------------------------------------------------------------------------------
-void solicitarConexionConNodo(int *socket_otro_nodo){
-
-}
 
 
 //----------------------------------------------------------------------------------------------------
@@ -394,7 +400,7 @@ int esperar_instrucciones_job(int *socket_job){
 			}
 			break;
 		case EXECUTE_REDUCE:
-			if (enviar_bloque(*socket_job) <=0){//XXX Acá la función que realizaría el reduce
+			if (realizar_Reduce(*socket_job) <=0){//XXX Acá la función que realizaría el reduce
 				log_error(logger, "no se pudo realizar rutina reduce");
 			}
 			else {
@@ -684,4 +690,94 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 		if(salida<0){
 			return;
 	      }
+}
+
+//----------------------------------------------------------------------------
+
+int realizar_Reduce(int socket) {
+
+	int result = 1;
+    uint32_t i;
+    uint32_t id, cantTemp, cantNodos;
+    char* pathMap = string_from_format("%s/map_script%i.sh",conf.dir_temp,last_script_increment_and_take());
+    char* destino, pathTmp;
+    t_reduce_nodo_dest *nodoToConect =  malloc(sizeof(t_reduce_nodo_dest));
+
+	//buffer_add_int(reduce_to_Nodo_buff, nodo_host->id_nodo);
+	result = (result > 0) ? receive_int_in_order(socket,&id): result;
+	//buffer_add_string(reduce_to_Nodo_buff, reduce_dest->temp_file_name); //
+	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &destino) : result;
+    //buffer_add_int(reduce_to_Nodo_buff, list_size(nodo_host->path_temps));
+	result = (result > 0) ? receive_int_in_order(socket,&cantTemp): result; //en mi nodo
+
+	for (i=0;i< cantTemp;i++)
+	{
+		//buffer_add_string(reduce_to_Nodo_buff, path); //Recibo lista de paths
+		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &pathTmp) : result;
+	}
+	//buffer_add_int(reduce_to_Nodo_buff, list_size(reduce_dest->list_nodos))
+	result = (result > 0) ? receive_int_in_order(socket,&cantNodos): result;
+
+	for (i=0;i< cantNodos;i++)
+	{
+		//buffer_add_int(reduce_to_Nodo_buff, nodo_guest->id_nodo);
+		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->id_nodo) : result;
+		//buffer_add_int(reduce_to_Nodo_buff, nodo_guest->ip_nodo);
+		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->ip_nodo) : result;
+		//buffer_add_int(reduce_to_Nodo_buff, nodo_guest->puerto_nodo);
+		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->puerto_nodo) : result;
+
+		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->puerto_nodo) : result;
+
+	}
+
+	/*result = (result > 0) ? receive_entire_file_by_parts( socket, pathMap, MAX_PART_SIZE) : result;
+
+	if(result > 0) {
+		char* destinoCompleto = string_from_format("%s/%s",conf.dir_temp,destino);
+		if (id == conf.id){
+			log_info(logger, "Realizando tarea de map");
+			result = iniciar_Tarea_Map(pathMap, destinoCompleto, nroBloque);
+			if(result > 0) {
+				send_protocol_in_order(socket, MAP_OK);
+			} else {
+				send_protocol_in_order(socket, MAP_NOT_OK);
+			}
+		} else {
+			log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+			send_protocol_in_order(socket,INCORRECT_NODO);
+		}
+		free(destinoCompleto);
+	} else {
+		log_error(logger,"No se pudo obtener el Map");
+	}*/
+
+	free(pathMap);
+	free(destino);
+	free_reduce_nodo_dest(nodoToConect);
+	return result;
+}
+
+
+//----------------------------------------------------------------------------
+
+void free_reduce_nodo_dest(t_reduce_nodo_dest* self) {
+	list_destroy_and_destroy_elements(self->path_temps, (void *) free);
+	free(self);
+}
+
+//----------------------------------------------------------------------------
+
+int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo) {
+
+		log_debug(logger, "Solicitando conexión con nodo ID: %i...", id_nodo);
+		int socketNodo = solicitarConexionCon(ip_nodo, puerto_nodo);
+
+		if (socketNodo != -1) {
+			log_info(logger, "Conexión con nodo establecida IP: %s, Puerto: %i", ip_nodo, puerto_nodo);
+		} else {
+			log_error(logger, "Conexión con nodo FALLIDA! IP: %s, Puerto: %i", ip_nodo, puerto_nodo);
+		}
+
+		return socketNodo;
 }

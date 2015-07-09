@@ -1300,11 +1300,20 @@ int dir_is_empty(struct t_dir* dir){
 }
 
 //---------------------------------------------------------------------------
-int is_valid_arch_name(char* name, struct t_dir* parent_dir){
-	if(any_arch_with_name(name,parent_dir->list_archs)) {
-		return 0;
+void validate_arch_name(char** name, struct t_dir* parent_dir){
+	int i;
+	int OK = 0;
+	char* aux_name;
+	if(!any_arch_with_name(*name,parent_dir->list_archs)) OK=1;
+	for (i=1;!OK;i++){
+		aux_name = strdup(*name);
+		string_append_with_format(&aux_name,"-%d",i);
+		if(!any_arch_with_name(aux_name,parent_dir->list_archs)) {
+			string_append_with_format(name,"-%d",i);
+			OK=1;
+		}
+		free(aux_name);
 	}
-	return 1;
 }
 
 //---------------------------------------------------------------------------
@@ -1587,16 +1596,12 @@ void mv(char* old_path, char* new_path) {
 	} else if((arch_aux = get_arch_from_path(old_path))!=NULL) {
 		get_info_from_path(new_path, &arch_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
-			if(is_valid_arch_name(arch_name, parent_dir_aux)) {
-				moverArchivo(arch_aux,parent_dir_aux,arch_name);
-				arch_move(&arch_aux, parent_dir_aux);
-				aux_name = arch_aux->nombre;
-				arch_aux->nombre = arch_name;
-				free(aux_name);
-			} else {
-				printf("%s: no es un nombre valido\n",arch_name);
-				free(arch_name);
-			}
+			validate_arch_name(&arch_name, parent_dir_aux);
+			moverArchivo(arch_aux,parent_dir_aux,arch_name);
+			arch_move(&arch_aux, parent_dir_aux);
+			aux_name = arch_aux->nombre;
+			arch_aux->nombre = arch_name;
+			free(aux_name);
 		} else {
 			printf("%s: el archivo no existe\n",new_path);
 		}
@@ -1708,15 +1713,9 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 			if(send_ok!=-1){
 				get_info_from_path(mdfs_path, &arch_name, &parent_dir);
 				if(parent_dir!=NULL) {
-					if(is_valid_arch_name(arch_name, parent_dir)) {
-						list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
-						if(is_console) printf("OK\n");
-					} else {
-						if(is_console) printf("%s: no es un nombre valido\n",arch_name);
-						free(arch_name);
-						list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
-						return -1;
-					}
+					validate_arch_name(&arch_name, parent_dir);
+					list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
+					if(is_console) printf("OK\n");
 				} else {
 					if(is_console) printf("%s: el directorio no existe\n",mdfs_path);
 					free(arch_name);

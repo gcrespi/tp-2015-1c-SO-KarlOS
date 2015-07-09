@@ -282,10 +282,10 @@ void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 	result = (socket_nodo != -1) ? enviar_infoReduce_job(socket_nodo, reduce_dest, nodo_host) : -1;
 
 	if((socket_nodo != -1) && (result > 0)) {
-		close(socket_nodo);//XXX TESTME
+		close(socket_nodo);
 	}
 	//	uint32_t answer_map = 0;
-//	result = (result > 0) ? receive_answer_map(socket_nodo, &answer_map) : result;
+	//	result = (result > 0) ? receive_answer_map(socket_nodo, &answer_map) : result;
 
 	//XXX enviar verdadera respuesta
 	t_buffer* reduce_result_buff = buffer_create_with_protocol(REDUCE_OK);
@@ -358,16 +358,16 @@ int enviar_infoReduce_job(int socket_job,t_reduce_dest* reduce_dest, t_reduce_no
 		list_iterate(nodo_guest->path_temps, (void *) _buffer_add_path);
 	}
 	list_iterate(reduce_dest->list_nodos, (void *) _buffer_add_nodo_guest);
-//	result = send_buffer_and_destroy(socket_job, reduce_to_Nodo_buff); XXX Comentado para que no rompa el nodo
-//	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_reduce, MAX_PART_SIZE) : result;
-//
-//
+	result = send_buffer_and_destroy(socket_job, reduce_to_Nodo_buff);// XXX Comentado para que no rompa el nodo
+	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_reduce, MAX_PART_SIZE) : result;
+
+
 //	if(result<= 0) {
 //		log_error(paranoid_log, "No se pudo enviar Instrucciones de Reduce");
 //	} else {
 //		log_info(paranoid_log, "Se envio correctamente Instrucciones de Reduce");
 //	}
-	buffer_destroy(reduce_to_Nodo_buff);
+//	buffer_destroy(reduce_to_Nodo_buff);
 	return result;
 }
 

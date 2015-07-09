@@ -247,7 +247,6 @@ int obtener_puerto_job(){
 void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
 
 	t_hilo_job* job;
-	int hilos_de_job = 0;
 	int bandera = 1;
   	  while (bandera) {
   		  job = malloc(sizeof(t_hilo_job));
@@ -268,13 +267,12 @@ void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
 			  exit(-1);
 		  }
 
-//		  hilos_de_job++;
 //		  } else {
 //			  free_hilo_job(job);
 //		  }
-		  if (hilos_de_job >= 3) { //XXX
-			  bandera = 0;
-		  }
+//		  if (hora_de_morir) { //XXX
+//			  bandera = 0;
+//		  }
   	  }
 }
 
@@ -673,9 +671,9 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBl
 
 	if (entradaARedirigir != NULL)
 	{
-		printf("empece\n");
+		log_info(logger,"Comienzo Map: %s",pathArchivoSalida);
 		escribir_Sobre_Archivo(entradaARedirigir, nroBloque);
-		printf("termine\n");
+		log_info(logger,"Terminó Map: %s",pathArchivoSalida);
 		pclose (entradaARedirigir);
 
 		free(comandoEntero);
@@ -687,6 +685,58 @@ int iniciar_Tarea_Map(char *pathPrograma,char *pathArchivoSalida, uint32_t nroBl
 	}
 	return 1;
 }
+
+//----------------------------------------------------------------------------
+int write_temps_in_pipe_in_order(FILE *archivo, t_list* input_temp_paths) {
+
+	int salida = 1;
+	t_list* files;
+
+	if(open_files_to_merge(input_temp_paths, &files) > 0) {
+		char* linea;
+		while((salida > 0) && (take_next_merged_line(files, &linea) > 0)) {
+			salida= fprintf (archivo,"%s", linea);
+			free(linea);
+		}
+		list_destroy_and_destroy_elements(files, (void *) free_file_with_line);
+	} else {
+		log_error(logger,"No se pudo abrir todos los temporales necesarios para el Reduce");
+		return -1;
+	}
+	return 1;
+}
+
+//----------------------------------------------------------------------------
+int iniciar_Tarea_Reduce(char *pathPrograma,char *pathArchivoSalida, t_list* input_temp_paths)
+{
+	FILE *entradaARedirigir = NULL;
+	int result;
+
+	char *comandoEntero = string_from_format("./%s | sort > %s", pathPrograma, pathArchivoSalida);
+
+	entradaARedirigir = popen (comandoEntero,"w");
+
+	if (entradaARedirigir != NULL)
+	{
+		log_info(logger,"Comienzo Reduce: %s",pathArchivoSalida);
+		result = write_temps_in_pipe_in_order(entradaARedirigir, input_temp_paths);
+		log_info(logger,"Terminó Reduce: %s",pathArchivoSalida);
+		pclose (entradaARedirigir);
+
+		free(comandoEntero);
+
+		if(result <= 0) {
+			return -1;
+		}
+	}
+	else
+	{
+		log_error(logger,"No se pudo ejecutar el programa!");
+		return -1;
+	}
+	return 1;
+}
+
 //----------------------------------------------------------------------------
 void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
@@ -703,36 +753,13 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 }
 
 //----------------------------------------------------------------------------
-
-int realizar_Reduce(int socket) {
-
+int receive_reduce_instruction(int socket, uint32_t *id, char** destino, t_list* listPathNodo, t_list* listNodosToConect, char* pathReduce) {
 	int result = 1;
-    uint32_t i,j;
-    uint32_t id, cantTemp, cantNodos,cantTmpxNodo;
-    char* pathMap = string_from_format("%s/%imap_script%i.sh",conf.dir_temp,last_script_increment_and_take());
-    char* destino;
-    t_list *listPathNodo = list_create();
-    t_list *listNodosToConect = list_create();
-    t_reduce_nodo_dest *nodoToConect;
-    t_list *listPathNodoGuest = list_create();
-    t_list *nodosRechazados = list_create();
+	int i,j;
+	uint32_t cantTemp,cantNodos,cantTmpxNodo;
 
-
-
-    void _establecerConexionConNodo(t_reduce_nodo_dest* t_nodo){
-    	char *ip_nodo = from_int_to_inet_addr(t_nodo->ip_nodo);
-    	int socketNodo = solicitarConexionConNodo(ip_nodo, t_nodo->puerto_nodo,t_nodo->id_nodo);
-    	if (socketNodo <0){
-    		list_add(nodosRechazados,(void *)t_nodo->id_nodo);
-    	} else{
-    		t_nodo->socket_Nodo=socketNodo;
-    	}
-    	free(ip_nodo);
-    }
-
-
-	result = (result > 0) ? receive_int_in_order(socket,&id): result;
-	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &destino) : result;
+	result = (result > 0) ? receive_int_in_order(socket,id): result;
+	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) destino) : result;
 	result = (result > 0) ? receive_int_in_order(socket,&cantTemp): result; //en mi nodo
 
 	for (i=0;i< cantTemp;i++)
@@ -745,80 +772,144 @@ int realizar_Reduce(int socket) {
 	result = (result > 0) ? receive_int_in_order(socket,&cantNodos): result;
 
 	for (i=0;i< cantNodos;i++)
-	{
+	{	t_reduce_nodo_dest *nodoToConect;
 	    nodoToConect =  malloc(sizeof(t_reduce_nodo_dest));
 		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->id_nodo) : result;
 		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->ip_nodo) : result;
 		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->puerto_nodo) : result;
 		result = (result > 0) ? receive_int_in_order(socket,&cantTmpxNodo) : result;
+		nodoToConect->path_temps = list_create();
 
 			for (j=0;j< cantTmpxNodo;j++)
 			{
 				char* pathTmpNodoGuest;
 				result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &pathTmpNodoGuest) : result;
-				list_add(listPathNodoGuest,pathTmpNodoGuest);
-				nodoToConect->path_temps = listPathNodoGuest;
+				list_add(nodoToConect->path_temps,pathTmpNodoGuest);
 			}
 		list_add(listNodosToConect,nodoToConect);
 	}
 
-	if (cantNodos==0)
-	{
+	result = (result > 0) ? receive_entire_file_by_parts(socket, pathReduce, MAX_PART_SIZE) : result;
 
-		ejecutar_Reduce(listPathNodo);
+	if(result > 0) {
+		log_debug(logger,"Se recibieron instrucciones de Reduce correctamente");
+	}
 
-	} else {
+	return result;
+}
+
+//----------------------------------------------------------------------------
+void conectWithNodoGuest(t_reduce_nodo_dest* nodo_guest, t_list* nodosRechazados) {
+
+	char *ip_nodo = from_int_to_inet_addr(nodo_guest->ip_nodo);
+	int socketNodo = solicitarConexionConNodo(ip_nodo, nodo_guest->puerto_nodo,nodo_guest->id_nodo);
+	if (socketNodo <0){
+		uint32_t* id_nodo = malloc(sizeof(uint32_t));
+		*id_nodo = nodo_guest->id_nodo;
+		list_add(nodosRechazados,(void *) id_nodo);
+	} else{
+		nodo_guest->socket_Nodo=socketNodo;
+	}
+	free(ip_nodo);
+}
+
+//----------------------------------------------------------------------------
+int solicitarTmpsNodo(int socket, t_reduce_nodo_dest* self, t_list* listPathNodo, t_list* lostTemps) {
+
+	int i, cantTmps;
+	int result = 1;
+	char* pathDest;
+	char* tmpName;
+	t_buffer* buffer_Tmps_Nods = buffer_create_with_protocol(CONNECTION_NODO);
+	void _add_Buffer_tmp(char* path) {
+		buffer_add_string(buffer_Tmps_Nods, path);
+	}
+
+	cantTmps = list_size(self->path_temps);
+	buffer_add_int(buffer_Tmps_Nods, cantTmps);
+	list_iterate(self->path_temps, (void*) _add_Buffer_tmp);
+	send_buffer_and_destroy(socket, buffer_Tmps_Nods);
+
+	for (i = 0; i < cantTmps; i++) {
+		if(result > 0) {
+			result = receive_dinamic_array_in_order(socket, (void **) &tmpName);
+			if(result > 0) {
+				pathDest = string_from_format("%s/%i%s", conf.dir_temp, self->id_nodo, tmpName);
+				result = receive_entire_file_by_parts(socket, pathDest, MAX_PART_SIZE);
+				if(result > 0) {
+					list_add(listPathNodo, pathDest);
+				}
+				if(result == -2) {
+					list_add(lostTemps, tmpName);
+					result = 1;
+				}
+				free(pathDest);
+			}
+			free(tmpName);
+		}
+	}
+
+	return result;
+}
+
+//----------------------------------------------------------------------------
+int realizar_Reduce(int socket) {
+
+	int result = 1;
+    uint32_t id;
+    char* pathReduce = string_from_format("%s/reduce_script%i.sh",conf.dir_temp,last_script_increment_and_take());
+    char* destino;
+    t_list* listPathNodo = list_create();
+    t_list* listNodosToConect = list_create();
+    t_list* nodosRechazados = list_create();
+    t_list* lostTemps = list_create();
+
+
+    result = receive_reduce_instruction(socket, &id, &destino, listPathNodo, listNodosToConect, pathReduce);
+
+	if((result > 0) && (list_size(listNodosToConect) > 0)) {
+		void _establecerConexionConNodo(t_reduce_nodo_dest* nodo_guest){
+			conectWithNodoGuest(nodo_guest, nodosRechazados);
+		}
 		list_iterate(listNodosToConect,(void*) _establecerConexionConNodo );
-		if (list_size(nodosRechazados)> 0){
+
+		if (list_size(nodosRechazados) > 0) {
 			t_buffer* buffer_nodo_rechazado = buffer_create_with_protocol(NODO_NOT_FOUND);
-			buffer_add_int(buffer_nodo_rechazado,list_size(nodosRechazados));
+			buffer_add_int(buffer_nodo_rechazado, list_size(nodosRechazados));
 
 			void _buffer_add_id(uint32_t idnodo) {
-			buffer_add_int(buffer_nodo_rechazado, idnodo);
+				buffer_add_int(buffer_nodo_rechazado, idnodo);
 			}
-
 			list_iterate(nodosRechazados, (void *) _buffer_add_id);
-			send_buffer_and_destroy(socket,buffer_nodo_rechazado);
-		   }  else{
+			send_buffer_and_destroy(socket, buffer_nodo_rechazado);
 
-			    void _solicitarTmpsNodo(t_reduce_nodo_dest* self){
-
-			   	 int i,cantTmps;
-			     int result = 1;
-			     char* pathDest;
-			     char* tmpName;
-			     t_buffer* buffer_Tmps_Nods = buffer_create_with_protocol(CONNECTION_NODO);
-			     	  void _add_Buffer_tmp(char* path){
-			     	 	buffer_add_string(buffer_Tmps_Nods,path);
-			     	  }
-
-			   		cantTmps = list_size(self->path_temps);
-			   		buffer_add_int(buffer_Tmps_Nods,cantTmps);
-			   		list_iterate(self->path_temps,(void*)_add_Buffer_tmp);
-			   		send_buffer_and_destroy(socket,buffer_Tmps_Nods);
-
-			   		for (i=0; i<cantTmps;i++){
-			   		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &tmpName) : result;
-			   	    pathDest = string_from_format("%s/%i%s",conf.dir_temp,self->id_nodo,tmpName);
-			   	    result = (result > 0) ? receive_entire_file_by_parts( socket, pathDest, MAX_PART_SIZE) : result;
-			   	    list_add(listPathNodo,pathDest);
-			   		  }
-			   		free(tmpName);
-			   		free(pathDest);
-			   	   }
-
-			   	  list_iterate(listNodosToConect,(void *)_solicitarTmpsNodo);
-			      ejecutar_Reduce(listPathNodo);
-
-			      }
+			result = -1;
+		} else {
+			void _solicitarTmpsNodo(t_reduce_nodo_dest* self){
+				result = (result > 0) ? solicitarTmpsNodo(socket, self, listPathNodo, lostTemps) : result;
+			}
+			list_iterate(listNodosToConect, (void *) _solicitarTmpsNodo);
 		}
+	}
+	//XXX falta comprobar que esten todos los temps y sino enviar mensaje
 
+    if(result > 0) {
+    	result = iniciar_Tarea_Reduce(pathReduce,destino, listPathNodo);
 
-	free(pathMap);
+    	t_buffer* buffer_result_reduce;
+    	if(result > 0) {
+    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_OK);
+    	} else {
+    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
+    	}
+    }
+
+	free(pathReduce);
 	free(destino);
-	free_reduce_nodo_dest(nodoToConect);
-	free(listPathNodo);
-	free(listNodosToConect);
+	list_destroy_and_destroy_elements(listNodosToConect, (void *) free_reduce_nodo_dest);
+	list_destroy_and_destroy_elements(listPathNodo, (void *) free);
+	list_destroy_and_destroy_elements(nodosRechazados, (void *) free);
+	list_destroy_and_destroy_elements(lostTemps, (void *) free);
 	return result;
 }
 
@@ -841,21 +932,25 @@ int enviar_Tmps_ToNodo (int socket){
 	int result = 1;
 	int i;
 	char *nombre;
-	t_list *path = list_create();
+	t_list *paths = list_create();
 	result = (result > 0) ? receive_int_in_order(socket,&cantidad): result;
-		for(i=0;i < cantidad;i++)
-		{
-			result = (result > 0) ? receive_dinamic_array_in_order(socket,(void**)&nombre): result;
-			list_add(path,nombre);
-		}
 
-		void _sendPath_tmp (char* filePath){
-			send_stream_with_size_in_order(socket,filePath, strlen(filePath));
-			send_entire_file_by_parts(socket,filePath,MAX_PART_SIZE);
-		}
-	list_iterate(path,(void*)_sendPath_tmp);
+	for(i=0;i < cantidad;i++)
+	{
+		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void**)&nombre): result;
+		list_add(paths,nombre);
+	}
 
-	free(path);
+	void _sendPath_tmp (char* filePath){
+		result = (result > 0) ? send_stream_with_size_in_order(socket,filePath, strlen(filePath)+1) : result;
+		result = (result > 0) ? send_entire_file_by_parts(socket,filePath,MAX_PART_SIZE) : result;
+		if(result == -2) {
+			result = 1;
+		}
+	}
+	list_iterate(paths,(void*)_sendPath_tmp);
+
+	free(paths);
 	free(nombre);
 	return result;
 }

@@ -38,7 +38,7 @@ struct info_nodo {
 	int cant_bloques;
 };
 
-//XXX Estructura que enviaría job a nodo al conectarse
+//Estructura que enviaría job a nodo al conectarse
 typedef struct {
 	uint32_t id_map;
 	uint32_t id_nodo;
@@ -76,16 +76,16 @@ typedef struct {
 	int socket_Nodo;
 }t_reduce_nodo_dest;
 
+typedef struct {
+	char* path;
+	uint32_t id_nodo;
+} t_lost_temp;
+
 //Variables Globales
 struct conf_nodo conf; // estructura que contiene la info del arch de conf
 char *data; // data del archivo mapeado
 
 t_log* logger;
-sem_t semaforo1;
-sem_t semaforo2;
-pthread_t thread1, thread2, thread3;
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex2 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t* mutex;
 
 pthread_mutex_t mutex_last_script;
@@ -110,7 +110,6 @@ void finalizar_mutexs();
 int receive_new_client_job();
 void free_hilo_job(t_hilo_job* job);
 void esperar_finalizacion_hilo_conex_job(t_hilo_job*);
-//void terminar_hilos();
 int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_nodo);
 int obtener_puerto_job();
 void obtener_hilos_jobs(int, t_list*);
@@ -124,15 +123,10 @@ int enviar_Tmps_ToNodo (int);
 //Main####################################################################################################
 int main(void) {
 	int socket_fs,listener_job;
-
+	pthread_t thread_FS_conection;
 	 signal(SIGPIPE, SIG_IGN);
 
 	t_list* lista_jobs;
-
-	if((sem_init(&semaforo1, 0, 1))==-1){
-		perror("semaphore");
-		exit(1);
-	}
 
 	logger = log_create("nodo.log", "NODO", 1, LOG_LEVEL_TRACE);
 
@@ -159,7 +153,7 @@ int main(void) {
 	}
 
 
-	if ((pthread_create( &thread2, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
+	if ((pthread_create( &thread_FS_conection, NULL,(void *)esperar_instrucciones_del_filesystem, &socket_fs))== -1){
 		perror("fallo en el: thread 2");
 			exit(1);
 	}
@@ -171,7 +165,7 @@ int main(void) {
 	obtener_hilos_jobs(listener_job, lista_jobs);
 
 	list_iterate(lista_jobs, (void *) esperar_finalizacion_hilo_conex_job);
-	pthread_join(thread2, NULL);
+	pthread_join(thread_FS_conection, NULL);
 	free_conf_nodo();
 	finalizar_mutexs();
 	list_destroy_and_destroy_elements(lista_jobs, (void *) free_hilo_job);
@@ -257,7 +251,6 @@ void obtener_hilos_jobs(int listener_job, t_list* lista_jobs){
 		  }
   		  printf("\n hilos de job... \n");
 
-//		  if (receive_new_client_job(job->sockfd)) {
 		  list_add(lista_jobs, job);
 
 		  log_info(logger, "Creación de Hilo Job...");
@@ -293,6 +286,12 @@ int solicitarConexionConFileSystem(struct conf_nodo conf) {
 }
 //----------------------------------------------------------------------------------------------------
 
+
+//----------------------------------------------------------------------------------------------------
+void free_lost_temp(t_lost_temp* self) {
+	free(self->path);
+	free(self);
+}
 
 //----------------------------------------------------------------------------------------------------
 void free_hilo_job(t_hilo_job* job) {
@@ -362,7 +361,7 @@ int esperar_instrucciones_del_filesystem(int *socket){
 				}
 			break;
 
-		case READ_RESULT_JOB: //XXX
+		case READ_RESULT_JOB:
 			if (enviar_tmp(*socket) <=0){
 				log_error(logger, "no se pudo enviar el .tmp");
 			}
@@ -399,7 +398,7 @@ int esperar_instrucciones_job(int *socket_job){
 			}
 			break;
 		case EXECUTE_REDUCE:
-			if (realizar_Reduce(*socket_job) <=0){//XXX Acá la función que realizaría el reduce
+			if (realizar_Reduce(*socket_job) <=0){
 				log_error(logger, "no se pudo realizar rutina reduce");
 			}
 			else {
@@ -418,7 +417,7 @@ int esperar_instrucciones_job(int *socket_job){
 		default:
 			return -1;
 		}
-	} while(tarea != DISCONNECTED); //Aca no se, el job en algun momento se desconecta? Tal vez el protocolo (tarea) sea otro de los de la conectionlib.h
+	} while(tarea != DISCONNECTED);
 	return tarea;
 }
 //---------------------------------------------------------------------------
@@ -554,7 +553,6 @@ int mapearArchivo() {
 	if (fstat(fd, &sbuf) == -1) {
 		perror("fstat()");
 	}
-   sem_wait(&semaforo1);
 	data = mmap((caddr_t) 0, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED,
 			fd, 0);
 
@@ -562,7 +560,6 @@ int mapearArchivo() {
 		perror("mmap");
 		exit(1);
 	}
-	sem_post(&semaforo1);
 	log_info(logger,"mapeo correcto");
 
 	return 1;
@@ -819,7 +816,7 @@ void conectWithNodoGuest(t_reduce_nodo_dest* nodo_guest, t_list* nodosRechazados
 }
 
 //----------------------------------------------------------------------------
-int solicitarTmpsNodo(int socket, t_reduce_nodo_dest* self, t_list* listPathNodo, t_list* lostTemps) {
+int solicitarTmpsNodo(int socket, t_reduce_nodo_dest* nodo, t_list* listPathNodo, t_list* lostTemps) {
 
 	int i, cantTmps;
 	int result = 1;
@@ -830,31 +827,55 @@ int solicitarTmpsNodo(int socket, t_reduce_nodo_dest* self, t_list* listPathNodo
 		buffer_add_string(buffer_Tmps_Nods, path);
 	}
 
-	cantTmps = list_size(self->path_temps);
+	cantTmps = list_size(nodo->path_temps);
 	buffer_add_int(buffer_Tmps_Nods, cantTmps);
-	list_iterate(self->path_temps, (void*) _add_Buffer_tmp);
+	list_iterate(nodo->path_temps, (void*) _add_Buffer_tmp);
 	send_buffer_and_destroy(socket, buffer_Tmps_Nods);
 
 	for (i = 0; i < cantTmps; i++) {
 		if(result > 0) {
 			result = receive_dinamic_array_in_order(socket, (void **) &tmpName);
 			if(result > 0) {
-				pathDest = string_from_format("%s/%i%s", conf.dir_temp, self->id_nodo, tmpName);
+				pathDest = string_from_format("%s/%i%s", conf.dir_temp, nodo->id_nodo, tmpName);
 				result = receive_entire_file_by_parts(socket, pathDest, MAX_PART_SIZE);
+
 				if(result > 0) {
 					list_add(listPathNodo, pathDest);
+				} else {
+					free(pathDest);
 				}
+
 				if(result == -2) {
-					list_add(lostTemps, tmpName);
+					t_lost_temp* lost_temp = malloc(sizeof(t_lost_temp));
+					lost_temp->id_nodo = nodo->id_nodo;
+					lost_temp-> path = tmpName;
+					list_add(lostTemps, lost_temp);
 					result = 1;
+				} else {
+					free(tmpName);
 				}
-				free(pathDest);
+			} else {
+				free(tmpName);
 			}
-			free(tmpName);
 		}
 	}
 
 	return result;
+}
+
+//----------------------------------------------------------------------------
+void verify_local_temps(t_list*listPathNodo, t_list* lostTemps) {
+
+	void _verify_local_temp(char* path) {
+		struct stat stat_file;
+		if( stat(path, &stat_file) == -1) {
+			t_lost_temp* lost_temp = malloc(sizeof(t_lost_temp));
+			lost_temp->id_nodo = conf.id;
+			lost_temp->path = path;
+			list_add(lostTemps,lost_temp);
+		}
+	}
+	list_iterate(listPathNodo, (void *) _verify_local_temp);
 }
 
 //----------------------------------------------------------------------------
@@ -875,6 +896,18 @@ int realizar_Reduce(int socket) {
 	if((result > 0) && (id != conf.id)) {
 		log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
 		send_protocol_in_order(socket,INCORRECT_NODO);
+
+		free(pathReduce);
+		free(destino);
+		list_destroy_and_destroy_elements(listNodosToConect, (void *) free_reduce_nodo_dest);
+		list_destroy_and_destroy_elements(listPathNodo, (void *) free);
+		list_destroy_and_destroy_elements(nodosRechazados, (void *) free);
+		list_destroy_and_destroy_elements(lostTemps, (void *) free_lost_temp);
+		return -1;
+	}
+
+	if(result > 0) {
+		verify_local_temps(listPathNodo, lostTemps);
 	}
 
 	if((result > 0) && (list_size(listNodosToConect) > 0)) {
@@ -884,44 +917,72 @@ int realizar_Reduce(int socket) {
 		list_iterate(listNodosToConect,(void*) _establecerConexionConNodo );
 
 		if (list_size(nodosRechazados) > 0) {
+			log_error(logger,"No se pudo conectar con otros nodos");
 			t_buffer* buffer_nodo_rechazado = buffer_create_with_protocol(NODO_NOT_FOUND);
 			buffer_add_int(buffer_nodo_rechazado, list_size(nodosRechazados));
 
-			void _buffer_add_id(uint32_t idnodo) {
-				buffer_add_int(buffer_nodo_rechazado, idnodo);
+			void _buffer_add_id(uint32_t* idnodo) {
+				buffer_add_int(buffer_nodo_rechazado, *idnodo);
 			}
 			list_iterate(nodosRechazados, (void *) _buffer_add_id);
 			send_buffer_and_destroy(socket, buffer_nodo_rechazado);
 
-			result = -1;
-		} else {
-			void _solicitarTmpsNodo(t_reduce_nodo_dest* self){
-				result = (result > 0) ? solicitarTmpsNodo(socket, self, listPathNodo, lostTemps) : result;
-			}
-			list_iterate(listNodosToConect, (void *) _solicitarTmpsNodo);
-		}
-	}
-	//XXX falta comprobar que esten todos los temps y sino enviar mensaje
+			free(pathReduce);
+			free(destino);
+			list_destroy_and_destroy_elements(listNodosToConect, (void *) free_reduce_nodo_dest);
+			list_destroy_and_destroy_elements(listPathNodo, (void *) free);
+			list_destroy_and_destroy_elements(nodosRechazados, (void *) free);
+			list_destroy_and_destroy_elements(lostTemps, (void *) free_lost_temp);
 
-    if(result > 0) {
-    	result = iniciar_Tarea_Reduce(pathReduce,destino, listPathNodo);
+			return -1;
+		}
+
+		void _solicitarTmpsNodo(t_reduce_nodo_dest* self){
+			result = (result > 0) ? solicitarTmpsNodo(self->socket_Nodo, self, listPathNodo, lostTemps) : result;
+		}
+		list_iterate(listNodosToConect, (void *) _solicitarTmpsNodo);
+	}
+
+	if(result > 0) {
+		if(list_size(lostTemps) > 0) {
+			log_error(logger,"No se pudo encontrar todos los temporales");
+			t_buffer* buffer_temp_not_found = buffer_create_with_protocol(TEMP_NOT_FOUND);
+			buffer_add_int(buffer_temp_not_found, list_size(lostTemps));
+
+			void _buffer_add_lost_temp(t_lost_temp* lost_temp) {
+				buffer_add_int(buffer_temp_not_found, lost_temp->id_nodo);
+				buffer_add_string(buffer_temp_not_found, lost_temp->path);
+			}
+			list_iterate(lostTemps, (void *) _buffer_add_lost_temp);
+			send_buffer_and_destroy(socket, buffer_temp_not_found);
+
+			free(pathReduce);
+			free(destino);
+			list_destroy_and_destroy_elements(listNodosToConect, (void *) free_reduce_nodo_dest);
+			list_destroy_and_destroy_elements(listPathNodo, (void *) free);
+			list_destroy_and_destroy_elements(nodosRechazados, (void *) free);
+			list_destroy_and_destroy_elements(lostTemps, (void *) free_lost_temp);
+			return -1;
+		}
+
+
+		result = iniciar_Tarea_Reduce(pathReduce,destino, listPathNodo);
 
     	t_buffer* buffer_result_reduce;
-//    	if(result > 0) {
+    	if(result > 0) {
     		buffer_result_reduce = buffer_create_with_protocol(REDUCE_OK);
-//    	} else {
-//    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
-//    	}
+    	} else {
+    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
+    	}
     	send_buffer_and_destroy(socket, buffer_result_reduce);
-//    	buffer_destroy(buffer_result_reduce);
-    }
+	}
 
 	free(pathReduce);
 	free(destino);
 	list_destroy_and_destroy_elements(listNodosToConect, (void *) free_reduce_nodo_dest);
 	list_destroy_and_destroy_elements(listPathNodo, (void *) free);
 	list_destroy_and_destroy_elements(nodosRechazados, (void *) free);
-	list_destroy_and_destroy_elements(lostTemps, (void *) free);
+	list_destroy_and_destroy_elements(lostTemps, (void *) free_lost_temp);
 	return result;
 }
 
@@ -946,15 +1007,19 @@ int enviar_Tmps_ToNodo (int socket){
 		list_add(paths,nombre);
 	}
 
-	void _sendPath_tmp (char* filePath){
-		result = (result > 0) ? send_stream_with_size_in_order(socket,filePath, strlen(filePath)+1) : result;
-		result = (result > 0) ? send_entire_file_by_parts(socket,filePath,MAX_PART_SIZE) : result;
-		if(result == -2) {
-			result = 1;
+	if(result > 0) {
+		void _sendPath_tmp (char* filePath){
+			char* complete_filePath = string_from_format("%s/%s",conf.dir_temp,filePath);
+			result = (result > 0) ? send_stream_with_size_in_order(socket,filePath, strlen(filePath)+1) : result;
+			result = (result > 0) ? send_entire_file_by_parts(socket,complete_filePath,MAX_PART_SIZE) : result;
+			free(complete_filePath);
+			if(result == -2) {
+				log_warning(logger,"No se encontró el temporal %s", filePath);
+				result = 1;
+			}
 		}
+		list_iterate(paths,(void*)_sendPath_tmp);
 	}
-	list_iterate(paths,(void*)_sendPath_tmp);
-
 	free(paths);
 	free(nombre);
 	return result;
@@ -974,3 +1039,4 @@ int solicitarConexionConNodo(char* ip_nodo, uint32_t puerto_nodo, uint32_t id_no
 
 		return socketNodo;
 }
+

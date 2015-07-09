@@ -756,15 +756,22 @@ int receive_reduce_instruction(int socket, uint32_t *id, char** destino, t_list*
 	int result = 1;
 	int i,j;
 	uint32_t cantTemp,cantNodos,cantTmpxNodo;
+	char* aux_dest;
 
 	result = (result > 0) ? receive_int_in_order(socket,id): result;
-	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) destino) : result;
+	if(result > 0) {
+		receive_dinamic_array_in_order(socket,(void **) &aux_dest);
+		*destino = string_from_format("%s/%s",conf.dir_temp,aux_dest);
+		free(aux_dest);
+	}
 	result = (result > 0) ? receive_int_in_order(socket,&cantTemp): result; //en mi nodo
 
 	for (i=0;i< cantTemp;i++) {
-		char* pathTmp;
-		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &pathTmp) : result;
-		list_add(listPathNodo,pathTmp);
+		char* nameTmp;
+		result = (result > 0) ? receive_dinamic_array_in_order(socket, (void **) &nameTmp) : result;
+		char* pathTmp = string_from_format("%s/%s", conf.dir_temp, nameTmp);
+		list_add(listPathNodo, pathTmp);
+		free(nameTmp);
 	}
 
 	result = (result > 0) ? receive_int_in_order(socket,&cantNodos): result;
@@ -900,13 +907,13 @@ int realizar_Reduce(int socket) {
     	result = iniciar_Tarea_Reduce(pathReduce,destino, listPathNodo);
 
     	t_buffer* buffer_result_reduce;
-    	if(result > 0) {
+//    	if(result > 0) {
     		buffer_result_reduce = buffer_create_with_protocol(REDUCE_OK);
-    	} else {
-    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
-    	}
-//    	send_buffer_and_destroy(buffer_result_reduce);
-    	buffer_destroy(buffer_result_reduce);
+//    	} else {
+//    		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
+//    	}
+    	send_buffer_and_destroy(socket, buffer_result_reduce);
+//    	buffer_destroy(buffer_result_reduce);
     }
 
 	free(pathReduce);

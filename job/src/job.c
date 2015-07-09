@@ -218,6 +218,43 @@ int  receive_answer_map(int socket,uint32_t *answer_map) {
 	return *answer_map;
 }
 
+//---------------------------------------------------------------------------
+int  receive_answer_reduce(int socket,uint32_t *answer_reduce) {
+
+	*answer_reduce = receive_protocol_in_order(socket);
+
+	switch(*answer_reduce) {
+
+		case REDUCE_OK:
+			log_debug(paranoid_log, "Se Realizó el Reduce Correctamente");
+			break;
+
+//		case MAP_NOT_OK:
+//			log_error(paranoid_log, "No Se pudo realizar el Map");
+//			break;
+//
+//		case INCORRECT_NODO:
+//			log_error(paranoid_log, "El nodo conectado no es el Buscado");
+//			break;
+
+		case DISCONNECTED:
+			log_error(paranoid_log, "Nodo se Desconectó de forma inesperada");
+			return 0;
+			break;
+
+		case -1:
+			return -1;
+			break;
+
+		default:
+			log_error(paranoid_log, "Protocolo Inesperado %i (Job PANIC!)", *answer_reduce);
+			return -1;
+			break;
+	}
+
+	return *answer_reduce;
+}
+
 
 //---------------------------------------------------------------------------
 void hilo_map_job(t_map_dest* map_dest) {
@@ -281,12 +318,12 @@ void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 
 	result = (socket_nodo != -1) ? enviar_infoReduce_job(socket_nodo, reduce_dest, nodo_host) : -1;
 
+	uint32_t answer_reduce = 0;
+	result = (result > 0) ? receive_answer_reduce(socket_nodo, &answer_reduce) : result;
+
 	if((socket_nodo != -1) && (result > 0)) {
 		close(socket_nodo);
 	}
-	//	uint32_t answer_map = 0;
-	//	result = (result > 0) ? receive_answer_map(socket_nodo, &answer_map) : result;
-
 	//XXX enviar verdadera respuesta
 	t_buffer* reduce_result_buff = buffer_create_with_protocol(REDUCE_OK);
 

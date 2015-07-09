@@ -162,7 +162,7 @@ int upload(char*, char*, int);
 int download(char*, char*, int);
 void md5(char*);
 void blocks();
-void rmblock(char*,char*);
+void rmblock(char*,char*,char*);
 void cpblock(char*,char*);
 void lsrequest();
 void lsnode();
@@ -1456,7 +1456,7 @@ char execute_command(char* command){
 		case 12: md5(subcommands[1]); break;
 
 		case 13: blocks(subcommands[1]); break;
-		case 14: rmblock(subcommands[1],subcommands[2]); break;
+		case 14: rmblock(subcommands[1],subcommands[2],subcommands[3]); break;
 		case 15: cpblock(subcommands[1],subcommands[2]); break;
 
 		case 16: lsrequest(); break;
@@ -1492,8 +1492,8 @@ void help(){
 	puts(BOLD" download (MDFS path file) (local path file)"NORMAL" -> Copia el archivo del MDFS (MDFS path file) al filesystem local (local path file).");
 	puts(BOLD" md5 (path file)"NORMAL" -> Solicita el MD5 del archivo path (file).");
 	puts(BOLD" blocks (path file)"NORMAL" -> Muestra los bloques que componen el archivo (path file).");
-	puts(BOLD" rmblock (num block) (path file)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
-	puts(BOLD" cpblock (num block) (path file)"NORMAL" -> Copia el bloque nro (num block) del archivo (path file) en un nodo disponoble.");
+	puts(BOLD" rmblock (path file) (num block)"NORMAL" -> Elimina el bloque nro (num block) del archivo (path file).");
+	puts(BOLD" cpblock (path file) (num block)"NORMAL" -> Copia el bloque nro (num block) del archivo (path file) en un nodo disponoble.");
 	puts(BOLD" lsrequest"NORMAL" -> Lista los nodos que solicitan agregarse.");
 	puts(BOLD" lsnode"NORMAL" -> Lista los nodos actualmente disponible.");
 	puts(BOLD" addnode (node)"NORMAL" -> Agrega el nodo de datos (node).");
@@ -1812,8 +1812,8 @@ void blocks(char* arch_path){
 }
 
 //---------------------------------------------------------------------------
-void rmblock(char* num_block_str, char* arch_path){
-	int num_block;
+void rmblock(char* arch_path, char* num_block_str, char* num_copy_str){
+	int num_block, num_copy;
 	struct t_arch* arch_aux;
 	struct t_bloque* block;
 	if(num_block_str==NULL){
@@ -1831,18 +1831,27 @@ void rmblock(char* num_block_str, char* arch_path){
 					puts("aa");
 					copia_bloque_destroy(copy);
 				}
-				list_clean_and_destroy_elements(block->list_copias, (void*) _remove_copy);
+				if(num_copy_str==NULL){
+					list_clean_and_destroy_elements(block->list_copias, (void*) _remove_copy);
+				} else {
+					num_copy = strtol(num_copy_str, NULL, 10);
+					if(num_copy>=0 || num_copy<list_size(block->list_copias)){
+						list_remove_and_destroy_element(block->list_copias, num_copy, (void*) _remove_copy);
+					} else {
+						puts("rmblock: no existe numero de copia dentro del bloque");
+					}
+				}
 			} else {
 				puts("rmblock: no hay ningun bloque con ese numero");
 			}
 		} else {
-			printf("%s: el archivo no existe\n",arch_aux->nombre);
+			printf("%s: el archivo no existe\n",arch_path);
 		}
 	}
 }
 
 //---------------------------------------------------------------------------
-void cpblock(char* num_block_str, char* arch_path){
+void cpblock(char* arch_path, char* num_block_str){
 	int num_block;
 	struct t_arch* arch_aux;
 	struct t_bloque* bloque;
@@ -1866,7 +1875,8 @@ void cpblock(char* num_block_str, char* arch_path){
 				printf("%d: no existe en el archivo un bloque con ese numero",num_block);
 			}
 		} else {
-			printf("%s: el archivo no existe\n",arch_aux->nombre);
+			if(arch_aux)
+			printf("%s: el archivo no existe\n",arch_path);
 		}
 	}
 }

@@ -729,4 +729,48 @@ void eliminarCopiaBloque(struct t_arch* arch, int num_bloq, struct t_copia_bloq*
 		bson_destroy (update);
 }
 
+void copiarBloque(struct t_arch* arch, int num_bloq, struct t_copia_bloq* copy){
+	    bson_t *query, *update;
+	    bson_error_t error;
+	    int numeroCopia=0;
+		const bson_t * doc;
+		mongoc_cursor_t *cursor;
+		bson_iter_t iter, sub_iter, nroCopia_iter;
+
+	    query = BCON_NEW("idArchivo", BCON_INT32(arch->id_archivo),
+	    				 "numero", BCON_INT32(num_bloq)
+	    				);
+
+	    cursor = mongoc_collection_find(bloqueCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
+		while(mongoc_cursor_next (cursor, &doc)){
+			if (bson_iter_init_find (&iter, doc, "copias") &&
+				BSON_ITER_HOLDS_ARRAY (&iter) &&
+				bson_iter_recurse (&iter, &sub_iter) &&
+				BSON_ITER_HOLDS_DOCUMENT (&sub_iter)) {
+
+				while (bson_iter_next (&sub_iter)) {
+
+				     if(bson_iter_find_descendant (&sub_iter, "numeroCopia", &nroCopia_iter))
+				       	  if( numeroCopia<(bson_iter_int32(&nroCopia_iter)) ) numeroCopia = bson_iter_int32(&nroCopia_iter);
+
+				}
+			}
+		}
+
+	    update = BCON_NEW ("$push", "{",
+									 "copias", "{", "numeroCopia", BCON_INT32 (numeroCopia),
+									 	 	 	 	"nodo", BCON_INT32 (copy->id_nodo),
+									 	 	 	 	"bloque", BCON_INT32(copy->bloq_nodo),"}",
+									 "}");
+
+		if (!mongoc_collection_update (bloqueCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+			  printf ("%s\n", error.message);
+		}
+
+		bson_destroy (query);
+		bson_destroy (update);
+		mongoc_cursor_destroy (cursor);
+}
+
+
 

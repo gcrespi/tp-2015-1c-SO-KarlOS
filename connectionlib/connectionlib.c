@@ -463,6 +463,7 @@ int open_files_to_merge(t_list* paths, t_list** files_with_lines) {
 					}
 				}
 			} else {
+				mostrar_error(-1,path);
 				any_file_lost = 1;
 			}
 		}

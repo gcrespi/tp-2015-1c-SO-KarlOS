@@ -1697,7 +1697,7 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
 
 			fstat(local_fd, &file_stat);
-			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE, local_fd, OFFSET);
+			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
 				if(is_console) perror("mmap");
 				return -1;

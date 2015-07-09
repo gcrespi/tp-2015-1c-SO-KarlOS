@@ -4,6 +4,7 @@
 #include <string.h>
 #include <commons/collections/list.h>
 #include <commons/string.h>
+#include <pthread.h>
 #include "mongobiblioteca.h"
 
 
@@ -681,6 +682,7 @@ void levantarNodos(t_list* lista_nodos){
 		}
 		nodo->estado = DESCONECTADO;
 		nodo->bloquesLlenos = kbitarray_create_and_clean_all(nodo->cantidad_bloques);
+		pthread_mutex_init(&nodo->mutex_socket, NULL);
 		nodo->usando_socket = 0;
 		nodo->socket_FS_nodo = 0;
 		list_add(lista_nodos, nodo);

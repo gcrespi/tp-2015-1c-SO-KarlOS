@@ -257,10 +257,16 @@ int main(void) {
 char connectionIsBeingUsed(int socket) {
 	struct t_nodo* nodo;
 
+
+
 	if((nodo = find_nodo_with_sockfd(socket)) != NULL) {
-		if(nodo->usando_socket) {
-			return 1;
+		int self;
+		pthread_mutex_lock(&(nodo->mutex_socket));
+		if((self = nodo->usando_socket)) {
+			nodo->usando_socket = 0;
 		}
+		pthread_mutex_unlock(&(nodo->mutex_socket));
+		return self;
 	}
 
 	return 0;
@@ -941,6 +947,7 @@ void info_nodo_destroy(struct info_nodo* self){
 
 //---------------------------------------------------------------------------
 void nodo_destroy(struct t_nodo* self){
+	pthread_mutex_destroy(&self->mutex_socket);
 	kbitarray_destroy(self->bloquesLlenos);
 	free(self);
 }
@@ -1065,10 +1072,11 @@ int recv_block(char** data, struct t_nodo* nodo, int index_set) {
 
 	t_buffer* read_block_buff = buffer_create_with_protocol(READ_BLOCK);
 	buffer_add_int(read_block_buff, index_set);
+	pthread_mutex_lock(&nodo->mutex_socket);
 	nodo->usando_socket = 1;
 	result = send_buffer_and_destroy(socket_nodo,read_block_buff);
 	result = (result > 0) ? receive_dinamic_array_in_order(socket_nodo, (void**) data) : result;
-	nodo->usando_socket = 0;
+	pthread_mutex_unlock(&nodo->mutex_socket);
 	return result;
 }
 
@@ -1940,6 +1948,7 @@ void addnode(char* IDstr){
 						nuevo_nodo->estado = CONECTADO;
 						nuevo_nodo->cantidad_bloques = infnod->cant_bloques;
 						nuevo_nodo->socket_FS_nodo = infnod->socket_FS_nodo;
+						pthread_mutex_init(&(nuevo_nodo->mutex_socket), NULL);
 						nuevo_nodo->usando_socket = 0;
 						nuevo_nodo->ip_listen = infnod->ip_listen;
 						nuevo_nodo->port_listen = infnod->port_listen;

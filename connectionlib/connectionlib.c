@@ -124,6 +124,9 @@ int send_int_in_order(int socket, uint32_t entero) {
 int send_stream_with_size_in_order(int socket, void *buffer, uint32_t size_buffer) {
 	int result;
 
+	printf("HOLA %i \n",size_buffer);
+	fflush(stdout);
+
 	if((result = send_int_in_order(socket,size_buffer)) <= 0) {
 		return result;
 	}
@@ -177,6 +180,12 @@ int receive_dinamic_array_in_order(int socket, void** buffer) {
 		return result;
 	}
 	free(*buffer);
+
+	if(size_buffer > 5000) {
+		printf("HOLA %i \n",size_buffer);
+		fflush(stdout);
+		getchar();
+	}
 
 	*buffer = malloc(size_buffer);
 	return receive_stream_without_size(socket, * buffer, size_buffer);

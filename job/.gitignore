@@ -34,4 +34,4 @@
 *.log
 
 *language.settings.xml
-/Debug/
+/Debug/job

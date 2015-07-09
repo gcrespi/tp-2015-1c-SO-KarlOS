@@ -34,3 +34,4 @@
 *.log
 
 *language.settings.xml
+/Debug/fileSystem

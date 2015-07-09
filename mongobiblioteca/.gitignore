@@ -35,7 +35,4 @@
 *.log
 
 *language.settings.xml
-/Debug/
-/Debug/
-/Debug/
-/Debug/
+

@@ -351,8 +351,8 @@ struct t_bloque * recibirBloqueDeMongo (int idArchivo, int nro_bloq){
 				   bson_iter_find_descendant (&document_iter, "nodo", &nodo_iter)&&
 				   bson_iter_find_descendant (&document_iter, "bloque", &bloque_iter)){
 					copia = malloc(sizeof(struct t_copia_bloq));
-					copia -> id_nodo = (int) bson_iter_int32(&nodo_iter);
-					copia -> bloq_nodo = (int) bson_iter_int32(&bloque_iter);
+						copia -> id_nodo = (int) bson_iter_int32(&nodo_iter);
+						copia -> bloq_nodo = (int) bson_iter_int32(&bloque_iter);
 					list_add_in_index((bloque->list_copias), (int) bson_iter_int32(&nroCopia_iter), copia);
 				}
 			}

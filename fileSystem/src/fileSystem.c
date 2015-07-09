@@ -1042,9 +1042,9 @@ int get_nodo_disp(t_list* list_used, struct t_nodo** the_choosen_one, int* index
 	pthread_mutex_unlock(&mutex_listaNodos);
 
 	int _by_more_free_space(struct t_nodo* n1, struct t_nodo* n2){
-		int amount_clean_n1 = kbitarray_amount_bits_clean(n1->bloquesLlenos);
-		int amount_clean_n2 = kbitarray_amount_bits_clean(n2->bloquesLlenos);
-		return amount_clean_n1 > amount_clean_n2;
+		int amount_set_n1 = kbitarray_amount_bits_set(n1->bloquesLlenos);
+		int amount_set_n2 = kbitarray_amount_bits_set(n2->bloquesLlenos);
+		return amount_set_n1 < amount_set_n2;
 	}
 	list_sort(filtered_list, (void*) _by_more_free_space);
 	*the_choosen_one = list_get(filtered_list,0);
@@ -1697,7 +1697,7 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
 
 			fstat(local_fd, &file_stat);
-			data = mmap((caddr_t)0, file_stat.st_size, PROT_READ, MAP_SHARED, local_fd, OFFSET);
+			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
 				if(is_console) perror("mmap");
 				return -1;
@@ -1705,7 +1705,6 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 			list_blocks = list_create();
 			if(is_console) printf("Procesando... ");
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
-
 			if (close(local_fd) == -1){
 				if(is_console) perror("close");
 				return -1;

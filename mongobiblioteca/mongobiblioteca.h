@@ -80,5 +80,6 @@ void eliminarNodo(struct t_nodo* nodo);
 void crearNodo(struct t_nodo * nodo);
 void levantarNodos(t_list* lista_nodos);
 void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name);
+void eliminarCopiaBloque(struct t_arch* arch, int num_bloq, struct t_copia_bloq* copy);
 
 #endif /* MONGOBIBLIOTECA_H_ */

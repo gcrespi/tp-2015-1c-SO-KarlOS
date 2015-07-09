@@ -329,8 +329,6 @@ struct t_bloque * recibirBloqueDeMongo (int idArchivo, int nro_bloq){
 	bloque -> nro_bloq = nro_bloq;
 	bloque -> list_copias = list_create();
 
-	copia = malloc(sizeof(struct t_copia_bloq));
-
 	//Armo las copias
 	cursor = mongoc_collection_find(bloqueCollection, MONGOC_QUERY_NONE, 0, 0, 0, query, NULL, NULL);
 	mongoc_cursor_next (cursor, &doc);
@@ -343,8 +341,9 @@ struct t_bloque * recibirBloqueDeMongo (int idArchivo, int nro_bloq){
 				   bson_iter_find_descendant (&document_iter, "numeroCopia", &nroCopia_iter)&&
 				   bson_iter_find_descendant (&document_iter, "nodo", &nodo_iter)&&
 				   bson_iter_find_descendant (&document_iter, "bloque", &bloque_iter)){
-					copia -> id_nodo = (int) bson_iter_int32(&nodo_iter);
-					copia -> bloq_nodo = (int) bson_iter_int32(&bloque_iter);
+					copia = malloc(sizeof(struct t_copia_bloq));
+						copia -> id_nodo = (int) bson_iter_int32(&nodo_iter);
+						copia -> bloq_nodo = (int) bson_iter_int32(&bloque_iter);
 					list_add_in_index((bloque->list_copias), (int) bson_iter_int32(&nroCopia_iter), copia);
 				}
 			}

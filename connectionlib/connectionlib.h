@@ -38,7 +38,7 @@ enum protocolo {
 	REDUCE_NOT_OK
 };
 
-#define BLOCK_SIZE (4*1024) //<-4KB               //20*1024*1024 //<-20MB
+#define BLOCK_SIZE (4*1024) //<-4KB      20*1024*1024 //<-20MB
 #define MAX_PART_SIZE (4*1024)
 
 t_buffer* buffer_create();

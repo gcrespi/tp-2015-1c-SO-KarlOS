@@ -229,13 +229,21 @@ int  receive_answer_reduce(int socket,uint32_t *answer_reduce) {
 			log_debug(paranoid_log, "Se Realizó el Reduce Correctamente");
 			break;
 
-//		case MAP_NOT_OK:
-//			log_error(paranoid_log, "No Se pudo realizar el Map");
-//			break;
-//
-//		case INCORRECT_NODO:
-//			log_error(paranoid_log, "El nodo conectado no es el Buscado");
-//			break;
+		case REDUCE_NOT_OK:
+			log_error(paranoid_log, "No Se pudo realizar el Map");
+			break;
+
+		case INCORRECT_NODO:
+			log_error(paranoid_log, "El nodo conectado no es el Buscado");
+			break;
+
+		case NODO_NOT_FOUND:
+			log_error(paranoid_log, "No se encontraron los nodos correspondientes");
+			break;
+
+		case TEMP_NOT_FOUND:
+			log_error(paranoid_log, "No se encontraron algunos temporales");
+			break;
 
 		case DISCONNECTED:
 			log_error(paranoid_log, "Nodo se Desconectó de forma inesperada");
@@ -280,7 +288,7 @@ void hilo_map_job(t_map_dest* map_dest) {
 			} else {
 				result_map_buff = buffer_create_with_protocol(answer_map);
 			}
-			close(socket_nodo);//XXX TESTME
+			close(socket_nodo);
 		} else {
 			result_map_buff = buffer_create_with_protocol(ERROR_IN_CONNECTION);
 		}
@@ -305,6 +313,7 @@ void hilo_map_job(t_map_dest* map_dest) {
 void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 
 	int result = 1;
+	uint32_t answer_reduce = 0;
 
 	mostrar_reduce_dest(reduce_dest);
 
@@ -316,19 +325,89 @@ void hilo_reduce_job(t_reduce_dest* reduce_dest) {
 	char *ip_nodo = from_int_to_inet_addr(nodo_host->ip_nodo);
 	int socket_nodo = solicitarConexionConNodo(ip_nodo, nodo_host->puerto_nodo, nodo_host->id_nodo);
 
-	result = (socket_nodo != -1) ? enviar_infoReduce_job(socket_nodo, reduce_dest, nodo_host) : -1;
+	if(socket_nodo != 1) {
+		result = enviar_infoReduce_job(socket_nodo, reduce_dest, nodo_host);
+		result = (result > 0) ? receive_answer_reduce(socket_nodo, &answer_reduce) : result;
+	} else {
+		answer_reduce = INCORRECT_NODO;
+	}
 
-	uint32_t answer_reduce = 0;
-	result = (result > 0) ? receive_answer_reduce(socket_nodo, &answer_reduce) : result;
+	if(result <= 0) {
+		answer_reduce = REDUCE_NOT_OK;
+	}
+	t_buffer* reduce_result_buff;
+
+	switch(answer_reduce) {
+
+		case REDUCE_OK: case REDUCE_NOT_OK:
+			reduce_result_buff = buffer_create_with_protocol(answer_reduce);
+			if(reduce_dest->prot == ORDER_PARTIAL_REDUCE) {
+				buffer_add_int(reduce_result_buff, reduce_dest->id_nodo_host);
+			}
+			break;
+
+		case INCORRECT_NODO:
+			reduce_result_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
+			if(reduce_dest->prot == ORDER_REDUCE) {
+				buffer_add_int(reduce_result_buff, 1);
+				buffer_add_int(reduce_result_buff, nodo_host->id_nodo);
+			}
+			break;
+
+		case NODO_NOT_FOUND:
+			reduce_result_buff = buffer_create_with_protocol(NODO_NOT_FOUND);
+			if(reduce_dest->prot == ORDER_REDUCE) {
+				uint32_t i,amount_nodes = 0;
+				result = receive_int_in_order(socket_nodo, &amount_nodes);
+				buffer_add_int(reduce_result_buff, amount_nodes);
+
+				for(i=0;(i<amount_nodes) && (result > 0); i++) {
+					uint32_t id_nodo = 0;
+					result = receive_int_in_order(socket_nodo, &id_nodo);
+					buffer_add_int(reduce_result_buff, id_nodo);
+				}
+
+				if(result <= 0) {
+					buffer_destroy(reduce_result_buff);
+					reduce_result_buff = buffer_create_with_protocol(REDUCE_NOT_OK);
+				}
+			}
+			break;
+
+		case TEMP_NOT_FOUND:
+			reduce_result_buff = buffer_create_with_protocol(TEMP_NOT_FOUND);
+			uint32_t i,amount_temps = 0;
+			result = receive_int_in_order(socket_nodo, &amount_temps);
+			buffer_add_int(reduce_result_buff, amount_temps);
+			for(i=0;(i<amount_temps) && (result > 0); i++) {
+				uint32_t id_nodo = 0;
+				result = receive_int_in_order(socket_nodo, &id_nodo);
+				if(reduce_dest->prot == ORDER_REDUCE) {
+					buffer_add_int(reduce_result_buff, id_nodo);
+				}
+				char* path = NULL;
+				result = (result > 0) ? receive_dinamic_array_in_order(socket_nodo, (void **) &path) : result;
+				if(path != NULL) {
+					buffer_add_string(reduce_result_buff, path);
+					free(path);
+				}
+			}
+
+			if(result <= 0) {
+				buffer_destroy(reduce_result_buff);
+				reduce_result_buff = buffer_create_with_protocol(REDUCE_NOT_OK);
+			}
+			break;
+
+		default:
+			reduce_result_buff = buffer_create_with_protocol(REDUCE_NOT_OK);
+			break;
+
+
+	}
 
 	if((socket_nodo != -1) && (result > 0)) {
 		close(socket_nodo);
-	}
-	//XXX enviar verdadera respuesta
-	t_buffer* reduce_result_buff = buffer_create_with_protocol(REDUCE_OK);
-
-	if(reduce_dest->prot == ORDER_PARTIAL_REDUCE) {
-		buffer_add_int(reduce_result_buff, reduce_dest->id_nodo_host);
 	}
 
 	pthread_mutex_lock(&conex_marta_ready);
@@ -395,16 +474,15 @@ int enviar_infoReduce_job(int socket_job,t_reduce_dest* reduce_dest, t_reduce_no
 		list_iterate(nodo_guest->path_temps, (void *) _buffer_add_path);
 	}
 	list_iterate(reduce_dest->list_nodos, (void *) _buffer_add_nodo_guest);
-	result = send_buffer_and_destroy(socket_job, reduce_to_Nodo_buff);// XXX Comentado para que no rompa el nodo
+	result = send_buffer_and_destroy(socket_job, reduce_to_Nodo_buff);
 	result = (result > 0) ? send_entire_file_by_parts(socket_job, conf->path_reduce, MAX_PART_SIZE) : result;
 
 
-//	if(result<= 0) {
-//		log_error(paranoid_log, "No se pudo enviar Instrucciones de Reduce");
-//	} else {
-//		log_info(paranoid_log, "Se envio correctamente Instrucciones de Reduce");
-//	}
-//	buffer_destroy(reduce_to_Nodo_buff);
+	if(result<= 0) {
+		log_error(paranoid_log, "No se pudo enviar Instrucciones de Reduce");
+	} else {
+		log_info(paranoid_log, "Se envio correctamente Instrucciones de Reduce");
+	}
 	return result;
 }
 
@@ -593,8 +671,8 @@ void esperar_instrucciones_de_MaRTA() {
 			break;
 
 		case -1:
-			log_error(paranoid_log, "No se pudo recivir instrucciones de MaRTA");
-			exit(-1);
+			log_error(paranoid_log, "No se pudo recibir instrucciones de MaRTA");
+			error = 1;
 			break;
 
 		default:

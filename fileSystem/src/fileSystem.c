@@ -780,7 +780,7 @@ void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir* dir
 }
 
 //---------------------------------------------------------------------------
-void list_destroy_all_that_satisfy(t_list* list,int(*condition)(void*),void(*destroyer)(void*)){ //XXX Agregala a la lib por favor..
+void list_destroy_all_that_satisfy(t_list* list,int(*condition)(void*),void(*destroyer)(void*)){ //XXX Probar si anda bien
 	int i;
 	int length = list_size(list);
 	void* elem;
@@ -806,7 +806,7 @@ void clean_copies_from_nodo(int ID_nodo){
 					eliminarCopiaBloque(arch,block->nro_bloq,copy);
 					copia_bloque_destroy(copy);
 				}
-				list_destroy_all_that_satisfy(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
+				list_remove_and_destroy_by_condition(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
 			}
 			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
 		}
@@ -1186,6 +1186,10 @@ int copy_block(struct t_bloque* block, struct t_arch* arch){
 	char* data;
 
 	copy_to_copy = find_copia_activa(block->list_copias);
+	if(copy_to_copy==NULL){
+		puts("\nerror: no hay ningun nodo disponible para pedir el bloque a copiar");
+		return -1;
+	}
 	recv_nodo = find_nodo_with_ID(copy_to_copy->id_nodo);
 	if(recv_block(&data,recv_nodo,copy_to_copy->bloq_nodo)==-1) {
 		return -1;
@@ -1206,7 +1210,7 @@ int copy_block(struct t_bloque* block, struct t_arch* arch){
 	if(get_nodo_disp(list_used,&send_nodo,&index_set)==-1) {
 		list_destroy(list_used);
 		free(data);
-		puts("error: no hay ningun nodo disponible");
+		puts("\nerror: no hay nigun nodo disponible donde no este la copia actualmente");
 		return -1;
 	}
 	if(send_block(data,send_nodo,index_set,0,string_length(data)-1)<=0){
@@ -1218,7 +1222,7 @@ int copy_block(struct t_bloque* block, struct t_arch* arch){
 		copied_copy->id_nodo = send_nodo->id_nodo;
 		copied_copy->bloq_nodo = index_set;
 	list_add(block->list_copias,copied_copy);
-//	copiarBloque(arch,block->num_bloq,copied_copy); TODO
+	copiarBloque(arch,block->nro_bloq,copied_copy);
 	list_destroy(list_used);
 	free(data);
 	return 0;
@@ -1822,7 +1826,9 @@ void rmblock(char* num_block_str, char* arch_path){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
 				block = find_block_with_num(num_block,arch_aux->bloques);
 				void _remove_copy(struct t_copia_bloq* copy){
+					printf("copy %d %d\n",copy->bloq_nodo,copy->id_nodo);
 					eliminarCopiaBloque(arch_aux,block->nro_bloq,copy);
+					puts("aa");
 					copia_bloque_destroy(copy);
 				}
 				list_clean_and_destroy_elements(block->list_copias, (void*) _remove_copy);

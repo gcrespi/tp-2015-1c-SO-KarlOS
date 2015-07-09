@@ -214,7 +214,7 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 		return -1;
 	}
 
-	if((fd = creat(path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1) {
+	if((fd = open(path, O_CREAT|O_RDWR|O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1) {
 		log_error(logger,"No se pudo Crear el archivo de Datos ");
 		return -1;
 	}

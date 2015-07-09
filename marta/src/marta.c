@@ -178,8 +178,8 @@ int receive_block_location(int socket, t_list* block_copies, char* path_file, ui
 int locate_block_in_FS(char* path_file, uint32_t block_number, t_list* block_copies);
 
 //***************************************** Principal *******************************************
-void terminar_hilos(); //XXX
-int programa_terminado(); //XXX provisorio, en la entrega no se usa
+void terminar_hilos();
+int programa_terminado();
 
 int increment_and_take_last_job_id();
 
@@ -962,12 +962,12 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo,
 	}
 	pthread_mutex_unlock(&node_list_mutex);
 
-	int score = 100 - carga; //XXX revisar numero arbitrario, es la cuenta que quiero??
+	int score = - carga * 2; //XXX es la cuenta que quiero??
 
 	if(combiner) {
 		cant_mismo_nodo = 0;
 
-		cant_mismo_nodo += count_maps_in_node(temps_nodo, block_copy->id_nodo);
+		cant_mismo_nodo += count_maps_in_node(temps_nodo, block_copy->id_nodo) * 3;
 		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);//XXX
 
 		score += cant_mismo_nodo;
@@ -1158,12 +1158,16 @@ int receive_result_reduce(int sockjob, t_result_reduce* result_reduce) {
 		log_info(paranoid_log, "Reduce Realizado con Exito");
 		break;
 
+	case REDUCE_NOT_OK:
+		log_warning(paranoid_log, "No se realizo el reduce, se volverá a intentar");
+		break;
+
 	case NODO_NOT_FOUND:
 		log_warning(paranoid_log, "No se encontró el NODO donde mapear");
 		break;
 
 	case TEMP_NOT_FOUND:
-		log_warning(paranoid_log, "No se encontró el Archivo Temporal a Reducir ");
+		log_warning(paranoid_log, "No se encontraron Archivos Temporales a Reducir ");
 		break;
 
 	case DISCONNECTED:
@@ -1361,8 +1365,8 @@ void compute_lost_maps(t_list* unmapped_blocks, t_list* lost_temps) {
 }
 
 //---------------------------------------------------------------------------
-int receive_reduced_paths(int sockjob, t_list** reduced_paths) {
-	*reduced_paths = list_create();
+int receive_lost_paths(int sockjob, t_list** lost_temps) {
+	*lost_temps = list_create();
 	int result;
 	uint32_t amount_paths;
 	int i;
@@ -1372,7 +1376,7 @@ int receive_reduced_paths(int sockjob, t_list** reduced_paths) {
 		char* path;
 		result = receive_dinamic_array_in_order(sockjob,(void **) &path);
 		if(result > 0) {
-			list_add(*reduced_paths, path);
+			list_add(*lost_temps, path);
 		} else {
 			free(path);
 		}
@@ -1418,6 +1422,10 @@ int receive_result_final_reduce(int sockjob, int* result_prot) {
 	switch (*result_prot) {
 	case REDUCE_OK:
 		log_info(paranoid_log, "Final Reduce Realizado con Exito");
+		break;
+
+	case REDUCE_NOT_OK:
+		log_error(paranoid_log, "Final Reduce no se pudo Realizar");
 		break;
 
 	case NODO_NOT_FOUND:
@@ -1495,6 +1503,10 @@ int plan_final_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_fi
 		return 1;
 	}
 
+	if(result_prot == REDUCE_NOT_OK) {
+		return 2;
+	}
+
 	free_final_result(final_result);
 
 
@@ -1539,10 +1551,12 @@ int plan_final_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_fi
 		char* path_temp_not_found;
 
 		for(i=0; (i<amount_temps) && (result > 0); i++) {
-			result = receive_dinamic_array_in_order(sockjob,(void **) &path_temp_not_found);
 			result = (result > 0) ? receive_int_in_order(sockjob,&id_nodo) : result;
+			result = receive_dinamic_array_in_order(sockjob,(void **) &path_temp_not_found);
 
 			if(result > 0) {
+				log_warning(paranoid_log, "Temporal no encontrado: %s", path_temp_not_found);
+				getchar();
 				t_temp_nodo* temp_nodo = list_find(temps_nodo, (void *) _isSearchedTempNodo);
 
 				int _has_path_not_found(t_temp* temp) {
@@ -1566,6 +1580,19 @@ int plan_final_reduce(t_info_job info_job, t_list* temps_nodo, int sockjob, t_fi
 
 
 	return result;
+}
+
+//---------------------------------------------------------------------------
+void take_not_found_temps_from_orphan(t_list* not_found_temps,t_list* lost_paths,t_list* orphan_temps){
+
+	void _take_not_found_temp(char* path) {
+		int _has_path_not_found(t_temp* temp) {
+			return strcmp(path,temp->path_temp) == 0;
+		}
+		t_temp* temp = list_remove_by_condition(orphan_temps, (void *) _has_path_not_found);
+		list_add(not_found_temps, temp);
+	}
+	list_iterate(lost_paths, (void *)_take_not_found_temp);
 }
 
 //---------------------------------------------------------------------------
@@ -1619,12 +1646,15 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 				if (result > 0) {
 					switch (result_reduce.prot) {
 						int found;
-						t_list* reduced_paths;
+						t_list* lost_paths;
 						t_temp* new_temp;
 
 						case REDUCE_OK:
 							new_temp = create_temp_with_all_orphans(pending_reduces, result_reduce.id_nodo, temp_nodo);
 							list_add(temp_nodo->orphan_temps, new_temp);
+							break;
+
+						case REDUCE_NOT_OK:
 							break;
 
 						case NODO_NOT_FOUND:
@@ -1640,30 +1670,22 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 							}
 							break;
 
-						case TEMPS_NOT_FOUND:
+						case TEMP_NOT_FOUND:
 							log_warning(paranoid_log,
 									"No se Encontraron todos los temporales para realizar el Reduce en Nodo ID: %i, Replanificando...",
 									result_reduce.id_nodo);
 
-							result = receive_reduced_paths(sockjob, &reduced_paths);
+							result = receive_lost_paths(sockjob, &lost_paths);
 							if(result > 0) {
-								if(list_size(reduced_paths)>0) {
-									new_temp = create_temp_with_reduced_orphans(pending_reduces, result_reduce.id_nodo, temp_nodo, reduced_paths);
-								}
+								t_list* not_found_temps = list_create();
+								take_not_found_temps_from_orphan(not_found_temps, lost_paths, temp_nodo->orphan_temps);
 
 								void _replan_not_found_temp(t_temp* temp) {
 									replan_not_found_temp(temp,temp_nodo->orphan_temps, unmapped_blocks);
 								}
-								t_list* not_found_temps = temp_nodo->orphan_temps;
-								temp_nodo->orphan_temps = list_create();
-
 								list_iterate(not_found_temps, (void *) _replan_not_found_temp);
 								list_destroy_and_destroy_elements(not_found_temps, (void *) free_temp_alone);
-
-								if(list_size(reduced_paths)>0) {
-									list_add(temp_nodo->orphan_temps, new_temp);
-								}
-								list_destroy_and_destroy_elements(reduced_paths, (void *) free);
+								list_destroy_and_destroy_elements(lost_paths, (void *) free);
 							}
 							break;
 					}
@@ -1687,7 +1709,7 @@ int plan_combined_reduces(t_info_job info_job, t_list* temps_nodo, int sockjob, 
 	list_destroy_and_destroy_elements(pending_reduces,(void *) free_pending_reduce);
 
 	if(result <= 0) {
-		log_error(paranoid_log,"Fallo operación de Reduces Parciales");
+		log_error(paranoid_log,"Fallo operación de Reduces Combinados");
 		return -1;
 	}
 

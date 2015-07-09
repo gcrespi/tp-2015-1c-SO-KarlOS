@@ -780,18 +780,33 @@ void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir* dir
 }
 
 //---------------------------------------------------------------------------
+void list_destroy_all_that_satisfy(t_list* list,int(*condition)(void*),void(*destroyer)(void*)){ //XXX Agregala a la lib por favor..
+	int i;
+	int length = list_size(list);
+	void* elem;
+	for (i=0;i<length;i++){
+		elem = list_get(list,i);
+		if(condition(elem)){
+			list_remove(list,i);
+			destroyer(elem);
+		}
+	}
+
+}
+
+//---------------------------------------------------------------------------
 void clean_copies_from_nodo(int ID_nodo){
 	void _delete_copies_in_dir(struct t_dir* dir){
 		void _delete_copies_in_arch(struct t_arch* arch){
 			void _delete_copies_in_bloq(struct t_bloque* block){
-				int _eq_id(struct t_copia_bloq* copy){
-					return copy->id_nodo == ID_nodo;
+				int _eq_id(struct t_copia_bloq* copia){
+					return copia->id_nodo == ID_nodo;
 				}
 				void _remove_copy(struct t_copia_bloq* copy){
-//					eliminarCopia(arch_aux->id_archivo,block->nro_bloq,copy->bloq_nodo); TODO esto no esta implementado
+					eliminarCopiaBloque(arch,block->nro_bloq,copy);
 					copia_bloque_destroy(copy);
 				}
-				list_remove_and_destroy_by_condition(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
+				list_destroy_all_that_satisfy(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
 			}
 			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
 		}
@@ -956,14 +971,18 @@ void nodo_destroy(struct t_nodo* self){
 void nodo_remove(struct t_nodo* self){
 	clean_copies_from_nodo(self->id_nodo);
 	eliminarNodo(self);
+	pthread_mutex_lock(&mutex_listaNodos);
 	nodo_destroy(self);
+	pthread_mutex_unlock(&mutex_listaNodos);
 }
 
 //---------------------------------------------------------------------------
 void copia_bloque_destroy(struct t_copia_bloq* self){
 	struct t_nodo* nodo;
 	nodo = find_nodo_with_ID(self->id_nodo);
-	kbitarray_clean_bit(nodo->bloquesLlenos,self->bloq_nodo);
+	if(nodo!=NULL){
+		kbitarray_clean_bit(nodo->bloquesLlenos,self->bloq_nodo);
+	}
 	free(self);
 }
 
@@ -1803,7 +1822,7 @@ void rmblock(char* num_block_str, char* arch_path){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
 				block = find_block_with_num(num_block,arch_aux->bloques);
 				void _remove_copy(struct t_copia_bloq* copy){
-//					eliminarCopia(arch_aux->id_archivo,block->nro_bloq,copy->bloq_nodo); TODO esto no esta implementado
+					eliminarCopiaBloque(arch_aux,block->nro_bloq,copy);
 					copia_bloque_destroy(copy);
 				}
 				list_clean_and_destroy_elements(block->list_copias, (void*) _remove_copy);
@@ -1979,9 +1998,7 @@ void rmnode(char* IDstr){
 			int _eq_ID(struct t_nodo* nodo){
 				return nodo->id_nodo == ID;
 			}
-			pthread_mutex_lock(&mutex_listaNodos);
 			list_remove_and_destroy_by_condition(listaNodos, (void*) _eq_ID, (void*) nodo_remove);
-			pthread_mutex_unlock(&mutex_listaNodos);
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",ID);
 		}

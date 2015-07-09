@@ -34,8 +34,8 @@
 
 void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     /*Recibo un bloque y el id del archivo, y lo escribo en mongo*/
-    bson_t *array, *bloque, *query;
-    bson_t *doc;
+    bson_t array, bloque, *query;
+    bson_t doc;
     int i;
     struct t_copia_bloq * copia;
 
@@ -48,39 +48,32 @@ void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
     }
 
     /*Creo el documento*/
-	bloque = bson_new();
-    doc = bson_new();
-    array = bson_new();
+    bson_init(&doc);
 
-    BSON_APPEND_INT32 (doc, "idArchivo", idArchivo);
-    BSON_APPEND_INT32 (doc, "numero", (bloqueNuevo->nro_bloq));
+    BSON_APPEND_INT32 (&doc, "idArchivo", idArchivo);
+    BSON_APPEND_INT32 (&doc, "numero", (bloqueNuevo->nro_bloq));
 
-    bson_append_array_begin (doc, "copias", -1, array);
+    bson_append_array_begin (&doc, "copias", -1, &array);
     for(i=0; i<CANT_COPIAS ; i++){
-    	bson_append_document_begin (array, "copias", -1, bloque);
+    	bson_append_document_begin (&array, "copias", -1, &bloque);
 		copia = list_get((bloqueNuevo->list_copias), i);
-		BSON_APPEND_INT32 (bloque, "numeroCopia", i);
-		BSON_APPEND_INT32 (bloque, "nodo", (copia->id_nodo));
-		BSON_APPEND_INT32 (bloque, "bloque", (copia->bloq_nodo));
-		bson_append_document_end (array,bloque);
+		BSON_APPEND_INT32 (&bloque, "numeroCopia", i);
+		BSON_APPEND_INT32 (&bloque, "nodo", (copia->id_nodo));
+		BSON_APPEND_INT32 (&bloque, "bloque", (copia->bloq_nodo));
+		bson_append_document_end (&array,&bloque);
     }
-    bson_append_array_end (doc, array);
-
+    bson_append_array_end (&doc, &array);
 
     /*Hago el insert en Bloques*/
-    if (!mongoc_collection_insert (bloqueCollection, MONGOC_INSERT_NONE, doc, NULL, NULL)) {
+    if (!mongoc_collection_insert (bloqueCollection, MONGOC_INSERT_NONE, &doc, NULL, NULL)) {
         printf ("Error insertando nuevo bloque\n");
         bson_destroy (query);
-    	bson_destroy (bloque);
-        bson_destroy (array);
-        bson_destroy (doc);
+        bson_destroy (&doc);
         return;
     }
 
-	bson_destroy (bloque);
     bson_destroy (query);
-    bson_destroy (array);
-    bson_destroy (doc);
+    bson_destroy (&doc);
 }
 
 void eliminarBloque(int idArchivo, int nroBloque){
@@ -270,7 +263,7 @@ void crearArchivoEn(struct t_arch* archivoNuevo, struct t_dir * directorio){
 
 void eliminarArchivo(struct t_arch * archivo){
   bson_error_t error;
-  bson_t *query;
+  bson_t *query, *query_dir, *update;
   const bson_t *doc;
   mongoc_cursor_t *cursor;
   int i;
@@ -296,6 +289,22 @@ void eliminarArchivo(struct t_arch * archivo){
             }
     }
   }
+
+  /*Actualizo directorio padre*/
+  query_dir= BCON_NEW ("_id", BCON_INT32(archivo->parent_dir->id_directorio));
+  update = BCON_NEW ("$pull", "{",
+							  "archivos", BCON_INT32 (archivo->id_archivo),
+							  "}");
+  if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query_dir, update, NULL,  &error)) {
+	  printf ("%s\n", error.message);
+	  mongoc_cursor_destroy (cursor);
+	  bson_destroy (query);
+	  bson_destroy (query_dir);
+	  bson_destroy (update);
+	  return;
+  }
+  bson_destroy (update);
+  bson_destroy (query_dir);
 
   /*Borro el archivo*/
   if (!mongoc_collection_remove (archivoCollection, MONGOC_DELETE_SINGLE_REMOVE, query, NULL, &error)) {

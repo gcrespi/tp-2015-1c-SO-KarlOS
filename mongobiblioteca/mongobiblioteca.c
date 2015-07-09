@@ -706,3 +706,27 @@ void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name)
 	bson_destroy (update);
 	bson_destroy (query);
 }
+
+void eliminarCopiaBloque(struct t_arch* arch, int num_bloq, struct t_copia_bloq* copy){
+	    bson_t *query, *update;
+	    bson_error_t error;
+
+	    query = BCON_NEW("idArchivo", BCON_INT32(arch->id_archivo),
+	    				 "numero", BCON_INT32(num_bloq),
+						 "copias.nodo", BCON_INT32(copy->id_nodo), "copias.bloque", BCON_INT32(copy->bloq_nodo)
+	    				);
+
+		update = BCON_NEW ("$pull", "{",
+									 "copias", "{", "nodo", BCON_INT32 (copy->id_nodo),
+									 	 	 	 	"bloque", BCON_INT32(copy->bloq_nodo),"}",
+									 "}");
+
+		if (!mongoc_collection_update (bloqueCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
+			  printf ("%s\n", error.message);
+		}
+
+		bson_destroy (query);
+		bson_destroy (update);
+}
+
+

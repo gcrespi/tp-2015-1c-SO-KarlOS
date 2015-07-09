@@ -384,6 +384,102 @@ int receive_entire_file_by_parts(int socket, char* dest_path, size_t max_part_le
 	return result;
 }
 
+//############################# Aparaeos #####################################
+
+//-------------------------------------------------------------------------------------------------
+void free_file_with_line(t_file_with_line* self) {
+	if(self->line != NULL) {
+		free(self->line);
+	}
+	free(self);
+}
+
+//-------------------------------------------------------------------------------------------------
+int take_next_merged_line(t_list* files_with_lines, char** next_line) {
+
+	t_file_with_line* _minLineInFile(t_file_with_line* file1,t_file_with_line* file2){
+		if(file2->line == NULL) {
+			return file1;
+		}
+		if(file1->line == NULL) {
+			return file2;
+		}
+
+		if(strcmp(file1->line,file2->line)<0) {
+			return file1;
+		} else {
+			return file2;
+		}
+	}
+
+	t_file_with_line* file_ahead = foldl1((void *) _minLineInFile, files_with_lines);
+
+	if(file_ahead == NULL) {
+		return 0;
+	}
+
+	if(file_ahead->line == NULL) {
+		return 0;
+	}
+
+	*next_line = strdup(file_ahead->line);
+
+	size_t len = strlen(file_ahead->line);
+	int result = getline(&(file_ahead->line), &len, file_ahead->fp);
+
+	if(result <= 0) {
+		list_remove_element(files_with_lines, (void *) file_ahead);
+		fclose(file_ahead->fp);
+		free_file_with_line(file_ahead);
+	}
+
+	return 1;
+}
+
+//-------------------------------------------------------------------------------------------------
+int open_files_to_merge(t_list* paths, t_list** files_with_lines) {
+
+	*files_with_lines = list_create();
+
+	int any_file_lost = 0;
+
+	void _open_file_and_take_first_line(char* path) {
+		if(!any_file_lost) {
+			FILE* fp = fopen(path, "r");
+			char* line = NULL;
+			if(fp != NULL) {
+				size_t len = 0;
+				int read = getline(&line, &len, fp);
+
+				if(read > 0) {
+					t_file_with_line* file_to_merge = malloc(sizeof(t_file_with_line));
+					file_to_merge->fp = fp;
+					file_to_merge->line = line;
+
+					list_add(*files_with_lines, file_to_merge);
+				} else {
+					if(line != NULL) {
+						free(line);
+					}
+				}
+			} else {
+				any_file_lost = 1;
+			}
+		}
+	}
+
+	list_iterate(paths, (void *) _open_file_and_take_first_line);
+
+	if(any_file_lost) {
+		list_destroy_and_destroy_elements(*files_with_lines, (void *) free_file_with_line);
+		return -1;
+	} else {
+		return 1;
+	}
+
+}
+
+
 //############################### Connections and Directions ######################################
 //---------------------------------------------------------------------------
 void mostrar_error(int number, char* cause) {

@@ -19,6 +19,10 @@ typedef struct {
 	size_t size;
 } t_buffer;
 
+typedef struct {
+	FILE* fp;
+	char* line;
+} t_file_with_line;
 
 //Enum del protocolo
 enum protocolo {
@@ -60,7 +64,9 @@ int receive_dinamic_array_in_order(int socket, void** buffer);
 int send_stream_without_size(int socket, void *buffer, uint32_t size_buffer);
 int receive_stream_without_size(int socket, void* buffer, uint32_t size_buffer);
 
-
+void free_file_with_line(t_file_with_line* self);
+int open_files_to_merge(t_list* paths, t_list** files_with_lines);
+int take_next_merged_line(t_list* files_with_lines, char** next_line);
 
 int write_stream(int fd, void* buffer, uint32_t size_buffer);
 int read_stream(int fd, void* buffer, uint32_t size_buffer);

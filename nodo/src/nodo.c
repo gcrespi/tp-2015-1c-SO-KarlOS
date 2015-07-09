@@ -119,7 +119,7 @@ int realizar_Reduce(int);
 int iniciar_Tarea_Map(char *,char *, uint32_t);
 void escribir_Sobre_Archivo(FILE *, uint32_t);
 void free_reduce_nodo_dest(t_reduce_nodo_dest* self);
-void ejecutar_Reduce(t_list * listaDePaths);
+void ejecutar_Reduce(t_list * listaDePaths, char * nameResult);
 int enviar_Tmps_ToNodo (int);
 
 //Main####################################################################################################
@@ -735,6 +735,7 @@ int realizar_Reduce(int socket) {
 	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &destino) : result;
 	result = (result > 0) ? receive_int_in_order(socket,&cantTemp): result; //en mi nodo
 
+   if (id == conf.id){
 	for (i=0;i< cantTemp;i++)
 	{
 		char* pathTmp;
@@ -765,7 +766,7 @@ int realizar_Reduce(int socket) {
 	if (cantNodos==0)
 	{
 
-		ejecutar_Reduce(listPathNodo);
+		ejecutar_Reduce(listPathNodo, destino);
 
 	} else {
 		list_iterate(listNodosToConect,(void*) _establecerConexionConNodo );
@@ -808,10 +809,14 @@ int realizar_Reduce(int socket) {
 			   	   }
 
 			   	  list_iterate(listNodosToConect,(void *)_solicitarTmpsNodo);
-			      ejecutar_Reduce(listPathNodo);
+			      ejecutar_Reduce(listPathNodo, destino);
 
 			      }
 		}
+   } else {
+		log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+		send_protocol_in_order(socket,INCORRECT_NODO);
+	}
 
 
 	free(pathMap);
@@ -831,9 +836,11 @@ void free_reduce_nodo_dest(t_reduce_nodo_dest* self) {
 
 //----------------------------------------------------------------------------
 
-void ejecutar_Reduce(t_list * listaDePaths){
+void ejecutar_Reduce(t_list * listaDePaths, char* nombreDeResultado){
+
 
 }
+
 //----------------------------------------------------------------------------
 int enviar_Tmps_ToNodo (int socket){
 

@@ -33,6 +33,5 @@
 
 *.log
 
-
 *language.settings.xml
-/Debug/nodo
+

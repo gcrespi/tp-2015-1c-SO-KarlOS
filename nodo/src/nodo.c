@@ -119,7 +119,6 @@ int realizar_Reduce(int);
 int iniciar_Tarea_Map(char *,char *, uint32_t);
 void escribir_Sobre_Archivo(FILE *, uint32_t);
 void free_reduce_nodo_dest(t_reduce_nodo_dest* self);
-void ejecutar_Reduce(t_list * listaDePaths);
 int enviar_Tmps_ToNodo (int);
 
 //Main####################################################################################################
@@ -762,8 +761,7 @@ int receive_reduce_instruction(int socket, uint32_t *id, char** destino, t_list*
 	result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) destino) : result;
 	result = (result > 0) ? receive_int_in_order(socket,&cantTemp): result; //en mi nodo
 
-	for (i=0;i< cantTemp;i++)
-	{
+	for (i=0;i< cantTemp;i++) {
 		char* pathTmp;
 		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void **) &pathTmp) : result;
 		list_add(listPathNodo,pathTmp);
@@ -771,8 +769,8 @@ int receive_reduce_instruction(int socket, uint32_t *id, char** destino, t_list*
 
 	result = (result > 0) ? receive_int_in_order(socket,&cantNodos): result;
 
-	for (i=0;i< cantNodos;i++)
-	{	t_reduce_nodo_dest *nodoToConect;
+	for (i=0;i< cantNodos;i++) {
+		t_reduce_nodo_dest *nodoToConect;
 	    nodoToConect =  malloc(sizeof(t_reduce_nodo_dest));
 		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->id_nodo) : result;
 		result = (result > 0) ? receive_int_in_order(socket,&nodoToConect->ip_nodo) : result;
@@ -867,6 +865,11 @@ int realizar_Reduce(int socket) {
 
     result = receive_reduce_instruction(socket, &id, &destino, listPathNodo, listNodosToConect, pathReduce);
 
+	if((result > 0) && (id != conf.id)) {
+		log_error(logger,"Id de Nodo incompatible...Se esperaba otro Nodo");
+		send_protocol_in_order(socket,INCORRECT_NODO);
+	}
+
 	if((result > 0) && (list_size(listNodosToConect) > 0)) {
 		void _establecerConexionConNodo(t_reduce_nodo_dest* nodo_guest){
 			conectWithNodoGuest(nodo_guest, nodosRechazados);
@@ -902,6 +905,8 @@ int realizar_Reduce(int socket) {
     	} else {
     		buffer_result_reduce = buffer_create_with_protocol(REDUCE_NOT_OK);
     	}
+//    	send_buffer_and_destroy(buffer_result_reduce);
+    	buffer_destroy(buffer_result_reduce);
     }
 
 	free(pathReduce);
@@ -914,17 +919,11 @@ int realizar_Reduce(int socket) {
 }
 
 //----------------------------------------------------------------------------
-
 void free_reduce_nodo_dest(t_reduce_nodo_dest* self) {
 	list_destroy_and_destroy_elements(self->path_temps, (void *) free);
 	free(self);
 }
 
-//----------------------------------------------------------------------------
-
-void ejecutar_Reduce(t_list * listaDePaths){
-
-}
 //----------------------------------------------------------------------------
 int enviar_Tmps_ToNodo (int socket){
 
@@ -935,8 +934,7 @@ int enviar_Tmps_ToNodo (int socket){
 	t_list *paths = list_create();
 	result = (result > 0) ? receive_int_in_order(socket,&cantidad): result;
 
-	for(i=0;i < cantidad;i++)
-	{
+	for(i=0;i < cantidad;i++) {
 		result = (result > 0) ? receive_dinamic_array_in_order(socket,(void**)&nombre): result;
 		list_add(paths,nombre);
 	}

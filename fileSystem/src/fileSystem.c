@@ -1103,7 +1103,7 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 		while(data[block_end]!='\n') block_end--;
 		for(i=0;i<CANT_COPIAS;i++){
 			if(get_nodo_disp(list_used, &nodo_disp, &index_set)==-1){
-				puts("no hay nodos disponibles");
+				puts("ERROR\nno hay suficientes nodos disponibles para mandar el archivo");
 				list_destroy(list_used);
 				list_add(*list_blocks,block);
 				return -1;
@@ -1485,10 +1485,10 @@ void format(){
 		eliminarDirectorio(root);
 		dir_destroy(root);
 		set_root();
-		int _is_disconnected(struct t_nodo* nodo){
-			return !nodo->estado;
+		void _remove_if_disconnected(struct t_nodo* nodo){
+			if(!nodo->estado) nodo_remove(nodo);
 		}
-		list_remove_and_destroy_by_condition(listaNodos, (void*) _is_disconnected, (void*) nodo_remove);
+		list_clean_and_destroy_elements(listaNodos, (void*) _remove_if_disconnected);
 	}
 }
 
@@ -1664,7 +1664,8 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 	struct t_dir *parent_dir;
 	t_list* list_blocks;
 
-	if(local_path!=NULL && mdfs_path!=NULL) {
+	if(local_path!=NULL) {
+		if(mdfs_path==NULL) mdfs_path = local_path;
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
 
 			fstat(local_fd, &file_stat);
@@ -1700,7 +1701,6 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 					return -1;
 				}
 			} else {
-				if(is_console) puts("error: el archivo no se subio correctamente");
 				list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 				return -1;
 			}
@@ -1719,10 +1719,11 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 int download(char* mdfs_path, char* local_path, int is_console){
 	struct t_arch* arch_aux;
 	int local_fd;
-	if(mdfs_path==NULL || local_path==NULL){
+	if(mdfs_path==NULL){
 		puts("download: falta un operando");
 		return -1;
 	} else if((arch_aux = get_arch_from_path(mdfs_path))!=NULL) {
+		if(local_path==NULL) local_path = mdfs_path;
 		if(estaDisponibleElArchivo(arch_aux)){
 			if ((local_fd = open(local_path, O_RDWR |  O_CREAT, S_IRWXU | S_IRWXO )) != -1) {
 				if(is_console) printf("Procesando... ");

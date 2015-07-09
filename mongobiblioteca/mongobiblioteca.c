@@ -85,12 +85,7 @@ void crearBloque(struct t_bloque * bloqueNuevo, int idArchivo){
 
 void eliminarBloque(int idArchivo, int nroBloque){
   bson_error_t error;
-  bson_t *query, *query_arch, *update;
-  const bson_t *doc;
-  int cant_bloq;
-  bson_iter_t iter;
-  bson_iter_t cantBloques_iter;
-  mongoc_cursor_t *cursor;
+  bson_t *query;
 
 /*Busco el bloque*/
   query = bson_new ();
@@ -102,39 +97,12 @@ void eliminarBloque(int idArchivo, int nroBloque){
     return;
   }
 
-  query_arch = bson_new ();
-  BSON_APPEND_INT32 (query_arch, "idArchivo", idArchivo);
-
-  cursor = mongoc_collection_find(archivoCollection, MONGOC_QUERY_NONE, 0, 0, 0, query_arch, NULL, NULL);
-
-  while (mongoc_cursor_next (cursor, &doc)) {
-	    if (bson_iter_init (&iter, doc) &&
-			bson_iter_find_descendant (&iter, "cant_bloq", &cantBloques_iter)){
-				cant_bloq = bson_iter_int32(&cantBloques_iter) - 1;
-		}
-  }
-
-  mongoc_cursor_destroy (cursor);
-
-  update = BCON_NEW ("$set", "{",
-								"cant_bloq", BCON_INT32 (cant_bloq),
-								"}");
-	if (!mongoc_collection_update (archivoCollection, MONGOC_UPDATE_NONE, query_arch, update, NULL,  &error)) {
-		  printf ("%s\n", error.message);
-		  bson_destroy (query);
-		  bson_destroy (query_arch);
-		  bson_destroy (update);
-		  return;
-	}
-
   /*Borro el bloque*/
   if (!mongoc_collection_remove (bloqueCollection, MONGOC_DELETE_SINGLE_REMOVE, query, NULL, &error)) {
     printf ("Error: %s\n", error.message);
   }
 
-  bson_destroy (query_arch);
   bson_destroy (query);
-  bson_destroy (update);
 }
 
 void crearDirectorioEn(struct t_dir* directorioNuevo,struct t_dir* directorioPadre){
@@ -333,7 +301,6 @@ void eliminarArchivo(struct t_arch * archivo){
   if (!mongoc_collection_remove (archivoCollection, MONGOC_DELETE_SINGLE_REMOVE, query, NULL, &error)) {
     printf ("Error: %s\n", error.message);
   }
-  printf("Archivo eliminado\n");
 
   mongoc_cursor_destroy (cursor);
   bson_destroy (query);

@@ -115,6 +115,7 @@ void eliminarBloque(int idArchivo, int nroBloque){
 
   mongoc_cursor_destroy (cursor);
 
+  update = bson_new();
   update = BCON_NEW ("$set", "{",
 								"cant_bloq", BCON_INT32 (cant_bloq),
 								"}");

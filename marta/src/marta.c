@@ -614,7 +614,11 @@ int receive_result_map(int sockjob, t_result_map* result_map) {
 		break;
 	}
 
-	return receive_int_in_order(sockjob, &(result_map->id_map));
+	int result = receive_int_in_order(sockjob, &(result_map->id_map));
+
+	log_info(paranoid_log,"Map ID: %i",result_map->id_map);
+
+	return result;
 }
 
 //---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ struct t_bloque {
 struct t_nodo {
 	uint32_t id_nodo;
 	uint32_t socket_FS_nodo;
+	pthread_mutex_t mutex_socket;
 	char usando_socket;
 	uint32_t ip_listen;
 	uint32_t port_listen;

@@ -1094,11 +1094,20 @@ int first_free_block(struct t_nodo* nodo){
 int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {
 	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
+	int sended=0, max_send=1024*1024, to_send;
 
 	t_buffer* write_block_buff = buffer_create_with_protocol(WRITE_BLOCK);
 	buffer_add_int(write_block_buff, index_set);
 	result = send_buffer_and_destroy(socket_nodo,write_block_buff);
-	result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start], block_end-block_start+1) : result;
+	while((result > 0)&&(sended < block_end-block_start+1)) {
+		if((block_end-block_start+1)-sended < max_send){
+			to_send = block_end-block_start+1-sended ;
+		} else {
+			to_send = max_send;
+		}
+		result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start+sended], to_send) : result;
+		sended+=result;
+	}
 	return result;
 }
 

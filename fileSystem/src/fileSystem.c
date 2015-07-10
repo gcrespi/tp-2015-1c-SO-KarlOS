@@ -802,18 +802,13 @@ void clean_copies_from_nodo(int ID_nodo){
 	void _delete_copies_in_dir(struct t_dir* dir){
 		void _delete_copies_in_arch(struct t_arch* arch){
 			void _delete_copies_in_bloq(struct t_bloque* block){
-				puts("antes de todo");
 				int _eq_id(struct t_copia_bloq* copia){
-					printf("antes del _eq_id %d %d\n", copia->bloq_nodo, copia->id_nodo);
 					return copia->id_nodo == ID_nodo;
 				}
 				void _remove_copy(struct t_copia_bloq* copy){
-					printf("antes del eliminarCopiaBloque %d %d\n", copy->bloq_nodo, copy->id_nodo);
 					eliminarCopiaBloque(arch,block->nro_bloq,copy);
-					puts("despues del eliminarCopiaBloque");
 					copia_bloque_destroy(copy);
 				}
-				puts("antes del list_remove");
 				list_destroy_all_that_satisfy(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
 			}
 			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
@@ -1835,9 +1830,7 @@ void rmblock(char* arch_path, char* num_block_str, char* num_copy_str){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
 				block = find_block_with_num(num_block,arch_aux->bloques);
 				void _remove_copy(struct t_copia_bloq* copy){
-					printf("copy %d %d\n",copy->bloq_nodo,copy->id_nodo);
 					eliminarCopiaBloque(arch_aux,block->nro_bloq,copy);
-					puts("aa");
 					copia_bloque_destroy(copy);
 				}
 				if(num_copy_str==NULL){

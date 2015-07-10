@@ -781,14 +781,17 @@ void foreach_dir_do_starts_from(void(*closure)(struct t_dir*), struct t_dir* dir
 
 //---------------------------------------------------------------------------
 void list_destroy_all_that_satisfy(t_list* list,int(*condition)(void*),void(*destroyer)(void*)){ //XXX Probar si anda bien
-	int i;
+	int i = 0;
 	int length = list_size(list);
 	void* elem;
-	for (i=0;i<length;i++){
+	while(i<length){
 		elem = list_get(list,i);
 		if(condition(elem)){
 			list_remove(list,i);
 			destroyer(elem);
+			length--;
+		} else {
+			i++;
 		}
 	}
 
@@ -1465,7 +1468,9 @@ char execute_command(char* command){
 		case 12: md5(subcommands[1]); break;
 
 		case 13: blocks(subcommands[1]); break;
-		case 14: rmblock(subcommands[1],subcommands[2],subcommands[3]); break;
+		case 14: if(subcommands[2]==NULL) rmblock(subcommands[1],NULL,NULL);
+				 else rmblock(subcommands[1],subcommands[2],subcommands[3]);
+				 break;
 		case 15: cpblock(subcommands[1],subcommands[2]); break;
 
 		case 16: lsrequest(); break;
@@ -1517,10 +1522,10 @@ void format(){
 		eliminarDirectorio(root);
 		dir_destroy(root);
 		set_root();
-		void _remove_if_disconnected(struct t_nodo* nodo){
-			if(!nodo->estado) nodo_remove(nodo);
+		int _is_disconnected(struct t_nodo* nodo){
+			return !nodo->estado;
 		}
-		list_clean_and_destroy_elements(listaNodos, (void*) _remove_if_disconnected);
+		list_destroy_all_that_satisfy(listaNodos, (void*) _is_disconnected, (void*) nodo_remove);
 	}
 }
 
@@ -1692,10 +1697,8 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 	struct t_dir *parent_dir;
 	t_list* list_blocks;
 
-	if(local_path!=NULL) {
-		if(mdfs_path==NULL) mdfs_path = local_path;
+	if(local_path!=NULL && mdfs_path!=NULL) {
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
-
 			fstat(local_fd, &file_stat);
 			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
@@ -1705,6 +1708,10 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 			list_blocks = list_create();
 			if(is_console) printf("Procesando... ");
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
+			if(munmap(data,file_stat.st_size)==-1){
+				if(is_console) perror("munmap");
+				return -1;
+			}
 			if (close(local_fd) == -1){
 				if(is_console) perror("close");
 				return -1;
@@ -1740,11 +1747,10 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 int download(char* mdfs_path, char* local_path, int is_console){
 	struct t_arch* arch_aux;
 	int local_fd;
-	if(mdfs_path==NULL){
+	if(mdfs_path==NULL || local_path==NULL){
 		puts("download: falta un operando");
 		return -1;
 	} else if((arch_aux = get_arch_from_path(mdfs_path))!=NULL) {
-		if(local_path==NULL) local_path = mdfs_path;
 		if(estaDisponibleElArchivo(arch_aux)){
 			if ((local_fd = open(local_path, O_RDWR |  O_CREAT, S_IRWXU | S_IRWXO )) != -1) {
 				if(is_console) printf("Procesando... ");

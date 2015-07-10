@@ -754,9 +754,10 @@ void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
 
 		int salida;
+		off_t desplazamiento = (long long int) indice * (long long int) BLOCK_SIZE;
 
 		pthread_mutex_lock( &mutex[indice] );
-		salida= fprintf (archivo,"%s",&data[indice * BLOCK_SIZE]);
+		salida= fprintf (archivo,"%s",&data[desplazamiento]);
 		pthread_mutex_unlock( &mutex[indice] );
 
 		if(salida<0){

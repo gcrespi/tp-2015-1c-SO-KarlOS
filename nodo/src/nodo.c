@@ -214,8 +214,20 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 		return -1;
 	}
 
-	if((fd = open(path, O_CREAT|O_RDWR|O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1) {
+	if((fd = open(path, O_CREAT|O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1) {
 		log_error(logger,"No se pudo Crear el archivo de Datos ");
+		return -1;
+	}
+
+	log_info(logger,"Llevando archivo de Datos a tamaño Deseado");
+
+	if(truncate(path, BLOCK_SIZE * conf.cant_bloques) != 0) {
+		log_error(logger,"No se pudo truncar el archivo de Datos");
+		return -1;
+	}
+
+	if(stat(path, &stat_file) == -1) {
+		log_error(logger,"Error while stat");
 		return -1;
 	}
 

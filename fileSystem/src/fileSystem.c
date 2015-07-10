@@ -224,6 +224,7 @@ int main(void) {
 	pthread_mutex_init(&mutex_listaNodos,NULL);
 
 	logger = log_create("fs.log","FS",0,LOG_LEVEL_TRACE);
+	log_info(logger,"Se inicia el MDFS");
 	list_info_nodo = list_create();
 
 	levantar_arch_conf();   //Levanta el archivo de configuracion "fs.cfg"
@@ -249,6 +250,7 @@ int main(void) {
 	log_destroy(logger);
 	pthread_mutex_destroy(&mutex_listaNodos);
 	cerrarMongo();
+	log_info(logger,"Se cierra todo correctamente");
 	return EXIT_SUCCESS;
 }
 
@@ -312,8 +314,10 @@ int receive_marta(int martaSock, uint32_t prot) {
 
 		case MARTA_CONNECTION_REQUEST:
 			if(tieneSuficientesNodos()) {
-				return send_protocol_in_order(martaSock,MARTA_CONNECTION_ACCEPTED);
+				log_info(logger,"Se acepta conexion con marta");
+;				return send_protocol_in_order(martaSock,MARTA_CONNECTION_ACCEPTED);
 			} else {
+				log_info(logger,"Se rechaza conexion con marta por falta de nodos");
 				return send_protocol_in_order(martaSock,MARTA_CONNECTION_REFUSED);
 			}
 			break;
@@ -663,6 +667,8 @@ int recivir_info_nodo (int socket){
 	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->ip_listen)) : result;
 	result = (result > 0) ? receive_int_in_order(socket,&(info_nodo->port_listen)) : result;
 
+	if(result) log_info(logger,"Se recibio solicitud del nodo con exito");
+	else log_info(logger,"Error al recibir solicitud del nodo");
 	info_nodo->socket_FS_nodo = socket;
 	list_add(list_info_nodo, info_nodo);
 
@@ -824,20 +830,30 @@ int save_result(char* path_result, char* src_name, int ID_nodo){
 	t_buffer* read_result_buff;
 
 	struct t_nodo* nodo = find_nodo_with_ID(ID_nodo);
-	if (nodo == NULL) return -1;
-	log_error(logger, "Nodo no existe");
-
+	if (nodo == NULL) {
+		log_error(logger, "Nodo no existe");
+		return -1;
+	}
 	read_result_buff = buffer_create_with_protocol(READ_RESULT_JOB);
 	buffer_add_string(read_result_buff,src_name);
 	result = (result > 0) ? send_buffer_and_destroy(nodo->socket_FS_nodo, read_result_buff) : result;
 	result = (result > 0) ? receive_entire_file_by_parts(nodo->socket_FS_nodo, "result.tmp", MAX_PART_SIZE) : result;
-	if (result < 0) return -1;
+	if (result < 0){
+		log_error(logger, "Error al recibir archivo result.tmp");
+		return -1;
+	}
 
 	result = upload("result.tmp",path_result,0);
-	if (result < 0) return -1;
+	if (result < 0) {
+		log_error(logger, "Error al hacer el upload del result.tmp");
+		return -1;
+	}
 
 	result = remove("result.tmp");
-	if (result < 0) return -1;
+	if (result < 0) {
+		log_error(logger, "Error al remover archivo result.tmp");
+		return -1;
+	}
 
 	return 1;
 }
@@ -1083,7 +1099,6 @@ int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, 
 	buffer_add_int(write_block_buff, index_set);
 	result = send_buffer_and_destroy(socket_nodo,write_block_buff);
 	result = (result > 0) ? send_stream_with_size_in_order(socket_nodo, &data[block_start], block_end-block_start+1) : result;
-
 	return result;
 }
 
@@ -1125,12 +1140,14 @@ int send_all_blocks(char* data, int* blocks_sent, t_list** list_blocks){
 		while(data[block_end]!='\n') block_end--;
 		for(i=0;i<CANT_COPIAS;i++){
 			if(get_nodo_disp(list_used, &nodo_disp, &index_set)==-1){
-				puts("ERROR\nno hay suficientes nodos disponibles para mandar el archivo");
+				puts("\nno hay suficientes nodos disponibles para mandar el archivo");
+				log_error(logger,"No hay suficientes nodos disponibles para mandar el archivo");
 				list_destroy(list_used);
 				list_add(*list_blocks,block);
 				return -1;
 			}
 			if (send_block(data,nodo_disp,index_set,block_start,block_end)<=0) {
+				log_error(logger,"Error al enviar bloque");
 				list_destroy(list_used);
 				list_add(*list_blocks,block);
 				return -1;
@@ -1165,12 +1182,14 @@ int rebuild_arch(struct t_arch* arch, int local_fd){
 			data_size = recv_block(&data,nodo,copy->bloq_nodo);
 			if(data_size !=-1 ){
 				if ((write(local_fd, data, data_size-1)) == -1){
+					log_error(logger,"Error al escribir archivo");
 					perror("error al escribir archivo");
 					free(data);
 					return -1;
 				}
 				free(data);
 			} else {
+				log_error(logger,"Error al recibir bloque");
 				free(data);
 				return -1;
 			}
@@ -1190,11 +1209,13 @@ int copy_block(struct t_bloque* block, struct t_arch* arch){
 
 	copy_to_copy = find_copia_activa(block->list_copias);
 	if(copy_to_copy==NULL){
+		log_error(logger,"Error: no hay ningun nodo disponible para pedir el bloque a copiar");
 		puts("\nerror: no hay ningun nodo disponible para pedir el bloque a copiar");
 		return -1;
 	}
 	recv_nodo = find_nodo_with_ID(copy_to_copy->id_nodo);
 	if(recv_block(&data,recv_nodo,copy_to_copy->bloq_nodo)==-1) {
+		log_error(logger,"Error al recibir bloque");
 		return -1;
 	}
 	int _nodo_used(struct t_nodo* nodo){
@@ -1213,10 +1234,12 @@ int copy_block(struct t_bloque* block, struct t_arch* arch){
 	if(get_nodo_disp(list_used,&send_nodo,&index_set)==-1) {
 		list_destroy(list_used);
 		free(data);
+		log_error(logger,"Error: no hay nigun nodo disponible donde no este la copia actualmente");
 		puts("\nerror: no hay nigun nodo disponible donde no este la copia actualmente");
 		return -1;
 	}
 	if(send_block(data,send_nodo,index_set,0,string_length(data)-1)<=0){
+		log_error(logger,"Error al enviar el bloque");
 		list_destroy(list_used);
 		free(data);
 		return -1;
@@ -1276,6 +1299,7 @@ struct t_arch* arch_create(char* arch_name, struct t_dir* parent_dir, int blocks
 		new_arch->bloques = list_blocks;
 		crearArchivoEn(new_arch,new_arch->parent_dir);
 	arch_id_counter++;
+	log_info(logger,"Se crea el archivo %s",arch_name);
 	return new_arch;
 }
 
@@ -1290,6 +1314,7 @@ struct t_dir* dir_create(char* dir_name, struct t_dir* parent_dir){;
 		new_dir->list_archs = list_create();
 	crearDirectorioEn(new_dir,new_dir->parent_dir);
 	dir_id_counter++;
+	log_info(logger,"Se crea el directorio %s",dir_name);
 	return new_dir;
 }
 
@@ -1526,6 +1551,7 @@ void format(){
 			return !nodo->estado;
 		}
 		list_destroy_all_that_satisfy(listaNodos, (void*) _is_disconnected, (void*) nodo_remove);
+		log_info(logger,"Se FORMATEA el MDFS");
 	}
 }
 
@@ -1583,6 +1609,7 @@ void rm(char* arch_path){
 			return string_equals_ignore_case(arch->nombre,arch_aux->nombre);
 		}
 		list_remove_by_condition(arch_aux->parent_dir->list_archs, (void*) _eq_name);
+		log_info(logger,"Se ELIMINA el archivo %s",arch_path);
 		eliminarArchivo(arch_aux);
 		arch_destroy(arch_aux);
 	} else {
@@ -1602,6 +1629,7 @@ void mv(char* old_path, char* new_path) {
 		get_info_from_path(new_path, &arch_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			validate_arch_name(&arch_name, parent_dir_aux);
+			log_info(logger,"Se MUEVE el archivo %s a %s",old_path,new_path);
 			moverArchivo(arch_aux,parent_dir_aux,arch_name);
 			arch_move(&arch_aux, parent_dir_aux);
 			aux_name = arch_aux->nombre;
@@ -1625,6 +1653,7 @@ void makedir(char* dir_path){
 		get_info_from_path(dir_path, &dir_name, &parent_dir);
 		if(parent_dir!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir)) {
+				log_info(logger,"Se CREA el directorio %s",dir_path);
 				list_add(parent_dir->list_dirs, dir_create(dir_name,parent_dir));
 			} else {
 				printf("%s: no es un nombre valido\n",dir_name);
@@ -1647,10 +1676,12 @@ void remdir(char* dir_path){
 			return string_equals_ignore_case(direc->nombre,dir_aux->nombre);
 		}
 		if(dir_is_empty(dir_aux)) {
+			log_info(logger,"Se ELIMINA el directorio %s", dir_path);
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
 			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
 		} else if(warning("El directorio no esta vacio, desea eliminarlo de todas formas?")) {
+			log_info(logger,"Se ELIMINA el directorio %s", dir_path);
 			list_remove_by_condition(dir_aux->parent_dir->list_dirs, (void*) _eq_name);
 			eliminarDirectorio(dir_aux);
 			dir_destroy(dir_aux);
@@ -1672,6 +1703,7 @@ void mvdir(char* old_path, char* new_path){
 		get_info_from_path(new_path, &dir_name, &parent_dir_aux);
 		if(parent_dir_aux!=NULL) {
 			if(is_valid_dir_name(dir_name, parent_dir_aux)) {
+				log_info(logger,"Se MUEVE el directorio de %s a %s", old_path, new_path);
 				moverDirectorio(dir_aux,parent_dir_aux,dir_name);
 				dir_move(&dir_aux, parent_dir_aux);
 				aux_name = dir_aux->nombre;
@@ -1699,41 +1731,48 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 
 	if(local_path!=NULL && mdfs_path!=NULL) {
 		if ((local_fd = open(local_path, O_RDONLY)) != -1) {
+			if(is_console) printf("Procesando... ");
+			fflush(stdout);
 			fstat(local_fd, &file_stat);
-			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
+			data = mmap((caddr_t) 0, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
+				log_error(logger,"Error al mappear el archivo %s",local_path);
 				perror("mmap");
 				return -1;
 			}
-			list_blocks = list_create();
-			if(is_console) printf("Procesando... ");
-			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
-			if(munmap(data,file_stat.st_size)==-1){
-				perror("munmap");
-				return -1;
-			}
-			if (close(local_fd) == -1){
-				perror("close");
-				return -1;
-			}
-			if(send_ok!=-1){
-				get_info_from_path(mdfs_path, &arch_name, &parent_dir);
-				if(parent_dir!=NULL) {
+			get_info_from_path(mdfs_path, &arch_name, &parent_dir);
+			if(parent_dir!=NULL) {
+				list_blocks = list_create();
+				send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
+				if(munmap(data,file_stat.st_size)==-1){
+					log_error(logger,"Error al munmappear el archivo %s",local_path);
+					perror("munmap");
+					return -1;
+				}
+				if (close(local_fd) == -1){
+					log_error(logger,"Error al cerrar el archivo %s",local_path);
+					perror("close");
+					return -1;
+				}
+				if(send_ok!=-1){
 					validate_arch_name(&arch_name, parent_dir);
 					list_add(parent_dir->list_archs, arch_create(arch_name,parent_dir,blocks_sent,list_blocks));
 					if(is_console) printf("OK\n");
+					log_info(logger,"El archivo %s se subio correctamente", arch_name);
 				} else {
-					if(is_console) printf("%s: el directorio no existe\n",mdfs_path);
-					free(arch_name);
+					log_error(logger,"Error al enviar archivo %s",local_path);
 					list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 					return -1;
 				}
 			} else {
+				if(is_console) printf("%s: el directorio no existe\n",mdfs_path);
+				free(arch_name);
 				list_destroy_and_destroy_elements(list_blocks, (void*) bloque_destroy);
 				return -1;
 			}
 		} else {
 			if(is_console) perror("error: no se pudo abrir el archivo");
+			log_error(logger,"Error al abrir el archivo %s",local_path);
 			return -1;
 		}
 	} else {
@@ -1757,20 +1796,25 @@ int download(char* mdfs_path, char* local_path, int is_console){
 
 				if (rebuild_arch(arch_aux,local_fd)!=-1) {
 					if(is_console) printf("OK\n");
+					log_info(logger,"El archivo %s se descargo correctamente",mdfs_path);
 				} else {
 					if(is_console) printf("ERROR\n");
+					log_error(logger,"Error al reconstruir el archivo %s",mdfs_path);
 				}
 
 				if (close(local_fd) == -1){
 					if(is_console)	perror("close");
+					log_error(logger,"Error al cerrar el archivo %s", local_path);
 					return -1;
 				}
 			} else {
 				perror("error al crear el archivo");
+				log_error(logger,"Error al crear el archivo %s", local_path);
 				return -1;
 			}
 		} else {
 			printf("%s: el archivo no se encuentra disponible, verifique que los nodos necesarios esten conectados\n", arch_aux->nombre);
+			log_info(logger,"El archivo %s no se encuentra disponible",mdfs_path);
 			return -1;
 		}
 	} else {
@@ -1786,7 +1830,10 @@ void md5(char* arch_path){
 	result = download(arch_path,"MD5",0);
 	if (result > 0){
 		system("md5sum MD5");
-		if (remove("MD5") < 0) perror("remove MD5");
+		if (remove("MD5") < 0) {
+			log_error(logger,"Error al remover MD5");
+			perror("remove MD5");
+		}
 	}
 }
 
@@ -1834,10 +1881,12 @@ void rmblock(char* arch_path, char* num_block_str, char* num_copy_str){
 					copia_bloque_destroy(copy);
 				}
 				if(num_copy_str==NULL){
+					log_info(logger,"Se elimina el bloque %s del archivo %s",num_block_str, arch_path);
 					list_clean_and_destroy_elements(block->list_copias, (void*) _remove_copy);
 				} else {
 					num_copy = strtol(num_copy_str, NULL, 10);
 					if(num_copy>=0 || num_copy<list_size(block->list_copias)){
+						log_info(logger,"Se elimina la copia %s del bloque %s del archivo %s",num_copy_str,num_block_str, arch_path);
 						list_remove_and_destroy_element(block->list_copias, num_copy, (void*) _remove_copy);
 					} else {
 						puts("rmblock: no existe numero de copia dentro del bloque");
@@ -1871,6 +1920,7 @@ void cpblock(char* arch_path, char* num_block_str){
 			if(bloque!=NULL){
 				printf("Procesando... ");
 				if(copy_block(bloque,arch_aux)!=-1){
+					log_info(logger,"Se copia el bloque %s del archivo %s",num_block_str, arch_path);
 					printf("OK\n");
 				}
 			} else {
@@ -1972,6 +2022,7 @@ void addnode(char* IDstr){
 //						crearNodo(viejo_nodo);
 //					}
 					pthread_mutex_unlock(&mutex_listaNodos);
+					log_info(logger,"Se agrega el nodo %s",IDstr);
 				}
 				info_nodo_destroy(infnod);
 			} else {
@@ -1992,6 +2043,7 @@ void addnode(char* IDstr){
 					list_add(listaNodos, nuevo_nodo);
 					pthread_mutex_unlock(&mutex_listaNodos);
 					crearNodo(nuevo_nodo);
+					log_info(logger,"Se agrega el nodo %s",IDstr);
 				} else {
 					puts("No existe ningun nodo desconectado con ese ID, conecte el nodo como nuevo");
 				}
@@ -2017,6 +2069,7 @@ void rmnode(char* IDstr){
 				return nodo->id_nodo == ID;
 			}
 			list_remove_and_destroy_by_condition(listaNodos, (void*) _eq_ID, (void*) nodo_remove);
+			log_info(logger,"Se ELIMINA el nodo %s",IDstr);
 		} else {
 			printf("%d: no hay ningun nodo con ese ID\n",ID);
 		}

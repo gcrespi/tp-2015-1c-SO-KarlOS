@@ -809,7 +809,7 @@ void clean_copies_from_nodo(int ID_nodo){
 					eliminarCopiaBloque(arch,block->nro_bloq,copy);
 					copia_bloque_destroy(copy);
 				}
-				list_remove_and_destroy_by_condition(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
+				list_destroy_all_that_satisfy(block->list_copias,(void*) _eq_id,(void*) _remove_copy);
 			}
 			list_iterate(arch->bloques, (void*) _delete_copies_in_bloq);
 		}
@@ -1702,18 +1702,18 @@ int upload(char* local_path, char* mdfs_path, int is_console){
 			fstat(local_fd, &file_stat);
 			data = mmap(NULL, file_stat.st_size, PROT_READ, MAP_FILE|MAP_PRIVATE|MAP_NORESERVE, local_fd, OFFSET);
 			if (data == (caddr_t)(-1)) {
-				if(is_console) perror("mmap");
+				perror("mmap");
 				return -1;
 			}
 			list_blocks = list_create();
 			if(is_console) printf("Procesando... ");
 			send_ok = send_all_blocks(data,&blocks_sent, &list_blocks);
 			if(munmap(data,file_stat.st_size)==-1){
-				if(is_console) perror("munmap");
+				perror("munmap");
 				return -1;
 			}
 			if (close(local_fd) == -1){
-				if(is_console) perror("close");
+				perror("close");
 				return -1;
 			}
 			if(send_ok!=-1){
@@ -1830,9 +1830,7 @@ void rmblock(char* arch_path, char* num_block_str, char* num_copy_str){
 			if(any_block_with_num(num_block,arch_aux->bloques)){
 				block = find_block_with_num(num_block,arch_aux->bloques);
 				void _remove_copy(struct t_copia_bloq* copy){
-					printf("copy %d %d\n",copy->bloq_nodo,copy->id_nodo);
 					eliminarCopiaBloque(arch_aux,block->nro_bloq,copy);
-					puts("aa");
 					copia_bloque_destroy(copy);
 				}
 				if(num_copy_str==NULL){

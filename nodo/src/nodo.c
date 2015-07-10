@@ -8,6 +8,7 @@
  ============================================================================
  */
 
+#define _FILE_OFFSET_BITS	64
 #include <stdio.h>
 #include <stdlib.h>
 #include <commons/config.h>
@@ -181,8 +182,11 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 	struct stat stat_file;
 	int fd;
 
+	long long int ideal_size = (long long int) BLOCK_SIZE * (long long int) conf.cant_bloques;
+
 	if(stat(path, &stat_file) == 0) {
-		if(stat_file.st_size != BLOCK_SIZE * conf.cant_bloques) {
+		log_debug(logger,"Tamaño Real: %ld, Esperado: %ld ", stat_file.st_size, ideal_size);
+		if(stat_file.st_size != ideal_size) {
 
 			if(!conf.nodo_nuevo) {
 				log_error(logger, "El Archivo de Datos del Nodo no cohincide con el tamaño que debería tener (%i * %i Bytes)",

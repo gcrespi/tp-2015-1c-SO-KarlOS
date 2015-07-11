@@ -1949,14 +1949,10 @@ int main(void) {
 				exit(-1);
 			}
 
-//			hilos_de_job++;
 		} else {
 			free_hilo_job(job);
 		}
 
-//		if (hilos_de_job >= 3) {
-//			terminar_hilos();
-//		}
 	}
 
 	log_info(paranoid_log, "Esperando finalizacion de hilos de Job");

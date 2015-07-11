@@ -247,10 +247,10 @@ int main(void) {
 	pthread_join(t_listener, NULL);
 	list_destroy_and_destroy_elements(list_info_nodo, (void*) info_nodo_destroy);
 	list_destroy_and_destroy_elements(listaNodos, (void*) nodo_destroy);
-	log_destroy(logger);
 	pthread_mutex_destroy(&mutex_listaNodos);
 	cerrarMongo();
 	log_info(logger,"Se cierra todo correctamente");
+	log_destroy(logger);
 	return EXIT_SUCCESS;
 }
 
@@ -1094,7 +1094,7 @@ int first_free_block(struct t_nodo* nodo){
 int send_block(char* data, struct t_nodo* nodo, int index_set, int block_start, int block_end) {
 	int result;
 	int socket_nodo = nodo->socket_FS_nodo;
-	int sended=0, max_send=1024*1024, to_send;
+	int sended=0, max_send=20*1024*1024, to_send;
 
 	t_buffer* write_block_buff = buffer_create_with_protocol(WRITE_BLOCK);
 	buffer_add_int(write_block_buff, index_set);

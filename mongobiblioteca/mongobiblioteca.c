@@ -671,9 +671,9 @@ void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name)
 	bson_t *query, *update;
 	bson_error_t error;
 
-	/*Actualizo "hijos" en padre nuevo*/
-	query = BCON_NEW ("_id", BCON_INT32(parent_dir->id_directorio));
-	update = BCON_NEW ("$push", "{",
+	/*Actualizo "archivos" en padre viejo*/
+	query = BCON_NEW ("_id", BCON_INT32(arch->parent_dir->id_directorio));
+	update = BCON_NEW ("$pull", "{",
 								 "archivos", BCON_INT32 (arch->id_archivo),
 								 "}");
 	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {
@@ -686,9 +686,9 @@ void moverArchivo(struct t_arch* arch, struct t_dir* parent_dir, char* new_name)
 	bson_destroy (update);
 	bson_destroy (query);
 
-	/*Actualizo "archivos" en padre viejo*/
-	query = BCON_NEW ("_id", BCON_INT32(arch->parent_dir->id_directorio));
-	update = BCON_NEW ("$pull", "{",
+	/*Actualizo "hijos" en padre nuevo*/
+	query = BCON_NEW ("_id", BCON_INT32(parent_dir->id_directorio));
+	update = BCON_NEW ("$push", "{",
 								 "archivos", BCON_INT32 (arch->id_archivo),
 								 "}");
 	if (!mongoc_collection_update (directorioCollection, MONGOC_UPDATE_NONE, query, update, NULL,  &error)) {

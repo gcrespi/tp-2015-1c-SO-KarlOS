@@ -34,7 +34,7 @@ libmongobiblioteca.a: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(OBJS)$(ARCHIVES)$(C_DEPS) libmongobiblioteca.a
+	-$(RM) $(OBJS)$(C_DEPS)$(ARCHIVES) libmongobiblioteca.a
 	-@echo ' '
 
 .PHONY: all clean dependents

@@ -98,8 +98,8 @@ void setNodoToSend(struct info_nodo *); // setea la estructura que va a ser envi
 int enviar_info_nodo(int, struct info_nodo*);
 void free_conf_nodo();
 int mapearArchivo();
-void cargarBloque(int, char*, int);
-void mostrarBloque(int);
+//void cargarBloque(int, char*, int);
+//void mostrarBloque(int);
 int esperar_instrucciones_del_filesystem(int*);
 int esperar_instrucciones_job(int *);
 int solicitarConexionConFileSystem(struct conf_nodo);
@@ -121,11 +121,15 @@ void escribir_Sobre_Archivo(FILE *, uint32_t);
 void free_reduce_nodo_dest(t_reduce_nodo_dest* self);
 int enviar_Tmps_ToNodo (int);
 
+void sigpipe_f(int n){
+	log_warning(logger,"dio sigpipe!!!!!!!!!!!\n");
+}
+
 //Main####################################################################################################
 int main(void) {
 	int socket_fs,listener_job;
 	pthread_t thread_FS_conection;
-	 signal(SIGPIPE, SIG_IGN);
+	signal(SIGPIPE, sigpipe_f);
 
 	t_list* lista_jobs;
 
@@ -182,7 +186,7 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 	struct stat stat_file;
 	int fd;
 
-	long long int ideal_size = (long long int) BLOCK_SIZE * (long long int) conf.cant_bloques;
+	off_t ideal_size = (off_t) BLOCK_SIZE * (off_t) conf.cant_bloques;
 
 	if(stat(path, &stat_file) == 0) {
 		log_debug(logger,"Tamaño Real: %ld, Esperado: %ld ", stat_file.st_size, ideal_size);
@@ -198,7 +202,7 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 
 			log_info(logger,"Llevando archivo de Datos a tamaño Deseado");
 
-			if(truncate(path, BLOCK_SIZE * conf.cant_bloques) != 0) {
+			if(truncate(path, ideal_size) != 0) {
 				log_error(logger,"No se pudo truncar el archivo de Datos");
 				return -1;
 			}
@@ -225,7 +229,7 @@ int abrirArchivoDeDatosVerificandoEstado(char* path) {
 
 	log_info(logger,"Llevando archivo de Datos a tamaño Deseado");
 
-	if(truncate(path, BLOCK_SIZE * conf.cant_bloques) != 0) {
+	if(truncate(path, ideal_size) != 0) {
 		log_error(logger,"No se pudo truncar el archivo de Datos");
 		return -1;
 	}
@@ -442,13 +446,15 @@ int recibir_Bloque(int socket) {
 
 	int result = 1;
     uint32_t nroBloque;
-    int longInfo;
+    off_t longInfo;
 
     result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
-	pthread_mutex_lock( &mutex[nroBloque] );
-	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[nroBloque*BLOCK_SIZE]) : result;
+    off_t offset = (off_t) BLOCK_SIZE * (off_t) nroBloque;
+
+    pthread_mutex_lock( &mutex[nroBloque] );
+	result = (result > 0) ? longInfo=receive_static_array_in_order(socket, &data[offset]) : result;
 	if(result > 0) {
-		data[nroBloque*BLOCK_SIZE + longInfo]='\0';
+		data[offset + longInfo]='\0';
 	}
 	pthread_mutex_unlock( &mutex[nroBloque] );
 	return result;
@@ -462,10 +468,12 @@ int enviar_bloque(int socket) {
     uint32_t nroBloque;
 
     result = (result > 0) ? receive_int_in_order(socket, &nroBloque) : result;
-    uint32_t largoBloque = strlen(&data[nroBloque*BLOCK_SIZE]);
+    off_t offset = (off_t) BLOCK_SIZE * (off_t) nroBloque;
+
+    uint32_t largoBloque = strlen(&data[offset]);
 
     pthread_mutex_lock(&mutex[nroBloque]);
-	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[nroBloque*BLOCK_SIZE],largoBloque+1) : result;
+	result = (result > 0) ? send_stream_with_size_in_order(socket, &data[offset],largoBloque+1) : result;
 	pthread_mutex_unlock(&mutex[nroBloque]);
 	return result;
 }
@@ -580,17 +588,17 @@ int mapearArchivo() {
 
 	return 1;
 }
-//---------------------------------------------------------------------------
-void cargarBloque(int nroBloque, char* info, int offset_byte) {
-	int pos_a_escribir = nroBloque * BLOCK_SIZE + offset_byte;
-	memcpy(data + pos_a_escribir, info, strlen(info));
-	//data[pos_a_escribir+strlen(info)]='\0';
-
-}
-//---------------------------------------------------------------------------
-void mostrarBloque(int nroBloque) {
-	printf("info bloque: %s\n", &(data[nroBloque * BLOCK_SIZE]));
-}
+////---------------------------------------------------------------------------
+//void cargarBloque(int nroBloque, char* info, int offset_byte) {
+//	int pos_a_escribir = nroBloque * BLOCK_SIZE + offset_byte;
+//	memcpy(data + pos_a_escribir, info, strlen(info));
+//	//data[pos_a_escribir+strlen(info)]='\0';
+//
+//}
+////---------------------------------------------------------------------------
+//void mostrarBloque(int nroBloque) {
+//	printf("info bloque: %s\n", &(data[nroBloque * BLOCK_SIZE]));
+//}
 
 //----------------------------------------------------------------------------
 void inicializar_mutexs(void){
@@ -752,17 +760,33 @@ int iniciar_Tarea_Reduce(char *pathPrograma,char *pathArchivoSalida, t_list* inp
 //----------------------------------------------------------------------------
 void escribir_Sobre_Archivo(FILE *archivo, uint32_t indice)
 {
+	off_t salida = 1;
+	off_t desplazamiento = (off_t) indice * (off_t) BLOCK_SIZE;
+	off_t written = 0;
+	off_t to_write;
 
-		int salida;
-		off_t desplazamiento = (long long int) indice * (long long int) BLOCK_SIZE;
+	pthread_mutex_lock( &mutex[indice] );
 
-		pthread_mutex_lock( &mutex[indice] );
-		salida= fprintf (archivo,"%s",&data[desplazamiento]);
-		pthread_mutex_unlock( &mutex[indice] );
+	for(to_write=0; (data[desplazamiento + written + to_write]!='\0') && (data[desplazamiento + written + to_write]!='\n'); to_write++);
+	if(data[desplazamiento + written + to_write]!='\0') {
+		to_write++;
+	}
 
-		if(salida<0){
-			return;
-	      }
+	while ((salida > 0) && (to_write > 0)) {
+		salida= fwrite(&data[desplazamiento + written],sizeof(char), to_write, archivo);
+		written+= salida;
+
+		for(to_write=0; (data[desplazamiento + written + to_write]!='\0') && (data[desplazamiento + written + to_write]!='\n'); to_write++);
+		if(data[desplazamiento + written + to_write]!='\0') {
+			to_write++;
+		}
+	}
+
+	pthread_mutex_unlock( &mutex[indice] );
+
+	if(salida<0){
+		return;
+	  }
 }
 
 //----------------------------------------------------------------------------

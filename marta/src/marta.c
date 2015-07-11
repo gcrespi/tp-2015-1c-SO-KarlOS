@@ -198,6 +198,8 @@ void esperar_finalizacion_hilo_conex_job(t_hilo_job* job);
 void init_var_globales();
 void end_var_globales();
 
+void compute_lost_maps(t_list* unmapped_blocks, t_list* lost_temps);
+
 //######################################  Variables Globales  #######################################
 pthread_mutex_t mutex_cerrar_marta;
 int cerrar_marta = 0;
@@ -962,13 +964,13 @@ int score_block_copy(t_block_copy* block_copy, int combiner, t_list* temps_nodo,
 	}
 	pthread_mutex_unlock(&node_list_mutex);
 
-	int score = - carga * 2; //XXX es la cuenta que quiero??
+	int score = - carga * 2;
 
 	if(combiner) {
 		cant_mismo_nodo = 0;
 
 		cant_mismo_nodo += count_maps_in_node(temps_nodo, block_copy->id_nodo) * 3;
-		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);//XXX
+		cant_mismo_nodo += count_pending_maps_in_node(pending_maps, block_copy->id_nodo);
 
 		score += cant_mismo_nodo;
 	}
@@ -992,8 +994,6 @@ t_map_dest* planificar_map(t_info_job info_job, t_src_block* src_block, uint32_t
 		list_destroy_and_destroy_elements(block_copies, (void *) free_block_copy);
 		return NULL;
 	}
-
-	//TODO TESTME Planificador
 
 	int _score_block_copy(t_block_copy* block_copy) {
 		return score_block_copy(block_copy, info_job.combiner, temps_nodo, pending_maps);
@@ -1133,11 +1133,26 @@ int plan_maps(t_info_job info_job, t_list* unmapped_blocks, t_list* temps_nodo, 
 
 					int found;
 					result =update_location_node_from_FS(pending_map->map_dest->id_nodo,&found);
+					if((result > 0) && (!found)) {
+						int _isSearchedTempNodo(t_temp_nodo* temp_nodo) {
+							return temp_nodo->id_nodo == pending_map->map_dest->id_nodo;
+						}
+
+						t_temp_nodo* temp_nodo = list_find(temps_nodo, (void *) _isSearchedTempNodo);
+
+						compute_lost_maps(unmapped_blocks, temp_nodo->orphan_temps);
+						list_remove_element(temps_nodo, temp_nodo);
+						free_temp_nodo(temp_nodo);
+					}
 
 					if(result > 0) {
+						decrementar_carga_nodo(pending_map->map_dest->id_nodo);
 						free_map_dest(pending_map->map_dest);
 						pending_map->map_dest = planificar_map(info_job, pending_map->src_block, &last_id_map, temps_nodo, pending_maps);
 						result = (pending_map->map_dest != NULL) ? order_map_to_job(pending_map->map_dest, sockjob) : -2;
+						if (result > 0) {
+							incrementar_carga_nodo(pending_map->map_dest->id_nodo);
+						}
 					}
 					break;
 			}
@@ -1887,7 +1902,7 @@ int main(void) {
 
 	t_conf_MaRTA conf;
 	levantar_arch_conf_marta(&conf);
-	int hilos_de_job = 0;
+//	int hilos_de_job = 0;
 
 	int listener_jobs;
 
@@ -1934,14 +1949,14 @@ int main(void) {
 				exit(-1);
 			}
 
-			hilos_de_job++;
+//			hilos_de_job++;
 		} else {
 			free_hilo_job(job);
 		}
 
-		if (hilos_de_job >= 3) { //XXX Provisorio
-			terminar_hilos();
-		}
+//		if (hilos_de_job >= 3) {
+//			terminar_hilos();
+//		}
 	}
 
 	log_info(paranoid_log, "Esperando finalizacion de hilos de Job");
